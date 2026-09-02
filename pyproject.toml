@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "artifact-proof-lab"
+version = "0.1.0"
+description = "Fail-closed, local-first verification for sealed and live artifact capsules"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "All rights reserved" }
+authors = [{ name = "Ahmad Fauzi" }]
+dependencies = []
+
+[project.scripts]
+artifact-proof = "artifact_proof.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
