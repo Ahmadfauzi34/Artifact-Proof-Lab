@@ -19,6 +19,11 @@ to an ephemeral file and opened read-only with `immutable=1`. Outer ZIP files
 are inspected in place. Nested backup ZIPs are bounded before their selected
 member is read.
 
+The engine accumulates findings only inside the active verification call. It
+then snapshots them into a frozen `Report`; callers and presentation adapters
+cannot remove a failed finding or rewrite the final verdict after validation.
+The snapshot has no arbitrary finding-count ceiling.
+
 ## Boundaries
 
 - `source.py` owns safe container access and resource bounds.

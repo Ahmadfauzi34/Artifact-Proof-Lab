@@ -14,6 +14,8 @@
 - mutable-state hashes incorrectly treated as immutable during live operation;
 - unanchored or mismatched manifest identity;
 - environment declarations confused with demonstrated compatibility.
+- post-validation mutation that removes a failed finding and rewrites the
+  reported verdict.
 
 ## Out of scope for v0.1
 

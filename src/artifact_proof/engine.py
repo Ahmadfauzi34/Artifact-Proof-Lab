@@ -24,7 +24,10 @@ def verify_artifact(
     require_trust_anchor: bool = False,
     limits: SourceLimits | None = None,
 ) -> Report:
-    report = Report(artifact=str(artifact), profile=profile)
+    findings: list[Finding] = []
+    observed_manifest_sha256: str | None = None
+    artifact_name: str | None = None
+    artifact_version: str | None = None
     try:
         if profile not in SUPPORTED_PROFILES:
             raise ManifestError(f"unsupported profile: {profile}")
@@ -33,17 +36,17 @@ def verify_artifact(
             raise ManifestError("detached manifest SHA-256 must be 64 lowercase hexadecimal characters")
         with open_source(artifact, limits) as source:
             manifest_bytes = source.read_bytes(canonical_manifest, max_bytes=1024 * 1024)
-            report.manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+            observed_manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
             manifest = parse_manifest(manifest_bytes, manifest_path=canonical_manifest)
-            report.artifact_name = manifest.name
-            report.artifact_version = manifest.version
-            report.add(verify_manifest_anchor(manifest_bytes, manifest_sha256, require_trust_anchor))
-            report.add(verify_coverage(source, manifest, canonical_manifest))
-            report.findings.extend(verify_file_hashes(source, manifest, profile))
+            artifact_name = manifest.name
+            artifact_version = manifest.version
+            findings.append(verify_manifest_anchor(manifest_bytes, manifest_sha256, require_trust_anchor))
+            findings.append(verify_coverage(source, manifest, canonical_manifest))
+            findings.extend(verify_file_hashes(source, manifest, profile))
             for check in manifest.checks:
-                report.add(run_declared_check(source, check, profile))
+                findings.append(run_declared_check(source, check, profile))
     except ArtifactProofError as exc:
-        report.add(
+        findings.append(
             Finding(
                 "artifact-contract",
                 "contract",
@@ -51,4 +54,11 @@ def verify_artifact(
                 f"{type(exc).__name__}: {exc}",
             )
         )
-    return report
+    return Report(
+        artifact=str(artifact),
+        profile=profile,
+        manifest_sha256=observed_manifest_sha256,
+        artifact_name=artifact_name,
+        artifact_version=artifact_version,
+        findings=tuple(findings),
+    )
