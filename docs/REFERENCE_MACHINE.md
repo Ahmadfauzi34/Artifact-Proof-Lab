@@ -19,3 +19,11 @@ results pass. Platform labels do not substitute for evidence.
 
 Termux is a planned native target. It should receive its own smoke proof rather
 than being inferred from generic Linux CI.
+
+## Configurable bounds
+
+The machine does not impose an arbitrary upper policy on caller-supplied source
+limits. Count and byte limits must be non-negative integers, and compression
+ratios must be finite non-negative numbers. Zero remains a valid fail-closed
+policy coordinate; non-finite or fractional values are rejected because they do
+not define a stable bound.
