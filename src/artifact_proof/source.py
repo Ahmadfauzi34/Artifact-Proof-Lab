@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import math
 import os
 from pathlib import Path
 import stat
@@ -18,6 +19,20 @@ class SourceLimits:
     max_file_bytes: int = 64 * 1024 * 1024
     max_total_bytes: int = 256 * 1024 * 1024
     max_compression_ratio: float = 200.0
+
+    def __post_init__(self) -> None:
+        for field_name in ("max_entries", "max_file_bytes", "max_total_bytes"):
+            value = getattr(self, field_name)
+            if type(value) is not int or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+
+        ratio = self.max_compression_ratio
+        ratio_is_valid = bool(
+            type(ratio) is int and ratio >= 0
+            or type(ratio) is float and math.isfinite(ratio) and ratio >= 0
+        )
+        if not ratio_is_valid:
+            raise ValueError("max_compression_ratio must be a finite non-negative number")
 
 
 class ArtifactSource:

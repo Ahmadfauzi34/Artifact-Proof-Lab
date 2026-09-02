@@ -10,6 +10,44 @@ from artifact_proof.source import DirectorySource, SourceLimits, ZipSource
 
 
 class SourceBoundaryTests(unittest.TestCase):
+    def test_count_and_byte_limits_require_non_negative_integers(self):
+        invalid = {
+            "max_entries": (-1, 1.5, True),
+            "max_file_bytes": (-1, 1.5, False),
+            "max_total_bytes": (-1, 1.5, True),
+        }
+        for field_name, values in invalid.items():
+            for value in values:
+                with self.subTest(field=field_name, value=value):
+                    with self.assertRaisesRegex(ValueError, field_name):
+                        SourceLimits(**{field_name: value})
+
+    def test_compression_ratio_limit_must_be_finite_and_non_negative(self):
+        for value in (-1.0, float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "max_compression_ratio"):
+                    SourceLimits(max_compression_ratio=value)
+
+    def test_zero_limits_remain_an_expressible_fail_closed_policy(self):
+        limits = SourceLimits(
+            max_entries=0,
+            max_file_bytes=0,
+            max_total_bytes=0,
+            max_compression_ratio=0,
+        )
+        self.assertEqual(limits.max_entries, 0)
+        self.assertEqual(limits.max_compression_ratio, 0)
+
+    def test_limits_do_not_impose_an_arbitrary_upper_policy(self):
+        reference = 10**1000
+        limits = SourceLimits(
+            max_entries=reference,
+            max_file_bytes=reference,
+            max_total_bytes=reference,
+            max_compression_ratio=reference,
+        )
+        self.assertEqual(limits.max_compression_ratio, reference)
+
     def test_directory_symlink_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

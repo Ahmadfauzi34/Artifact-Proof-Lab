@@ -6,6 +6,8 @@
 - duplicate members and symlink-based indirection;
 - encrypted entries that cannot be inspected deterministically;
 - decompression bombs bounded by entries, file size, total size, and ratio;
+- externally supplied source limits whose invalid numeric domain could disable
+  a bound;
 - missing, additional, or byte-modified files;
 - corrupted SQLite state;
 - cold backup that differs from the sealed active state;
