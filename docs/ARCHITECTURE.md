@@ -11,6 +11,7 @@ untrusted artifact
   -> detached-anchor observation
   -> coverage and byte identity
   -> declared semantic checks
+  -> stable source-snapshot finalization
   -> immutable proof report
 ```
 
@@ -23,6 +24,14 @@ The engine accumulates findings only inside the active verification call. It
 then snapshots them into a frozen `Report`; callers and presentation adapters
 cannot remove a failed finding or rewrite the final verdict after validation.
 The snapshot has no arbitrary finding-count ceiling.
+
+Source finalization is the report's linearization point. A directory source is
+re-inventoried and every bounded member is re-read before its aggregate identity
+is finalized. A ZIP source rechecks the outer container identity and digest.
+The resulting `source_snapshot_sha256` binds the report to that observed source
+state; mutation during the verification pipeline fails closed. This is an
+as-of snapshot identity, not a promise that an external path cannot change
+after the report returns.
 
 ## Boundaries
 

@@ -26,6 +26,7 @@ def verify_artifact(
 ) -> Report:
     findings: list[Finding] = []
     observed_manifest_sha256: str | None = None
+    source_snapshot_sha256: str | None = None
     artifact_name: str | None = None
     artifact_version: str | None = None
     try:
@@ -45,6 +46,16 @@ def verify_artifact(
             findings.extend(verify_file_hashes(source, manifest, profile))
             for check in manifest.checks:
                 findings.append(run_declared_check(source, check, profile))
+            source_snapshot_sha256 = source.finalize_snapshot()
+            findings.append(
+                Finding(
+                    "source-snapshot",
+                    "consistency",
+                    Status.PASS,
+                    "source remained stable through validation finalization",
+                    observed=source_snapshot_sha256,
+                )
+            )
     except ArtifactProofError as exc:
         findings.append(
             Finding(
@@ -58,6 +69,7 @@ def verify_artifact(
         artifact=str(artifact),
         profile=profile,
         manifest_sha256=observed_manifest_sha256,
+        source_snapshot_sha256=source_snapshot_sha256,
         artifact_name=artifact_name,
         artifact_version=artifact_version,
         findings=tuple(findings),

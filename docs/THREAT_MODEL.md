@@ -16,6 +16,7 @@
 - environment declarations confused with demonstrated compatibility.
 - post-validation mutation that removes a failed finding and rewrites the
   reported verdict.
+- source mutation after an early check but before proof-report finalization.
 
 ## Out of scope for v0.1
 
@@ -24,6 +25,8 @@
 - cryptographic signing and key management;
 - execution of build scripts or arbitrary validators from the artifact;
 - remote transparency logs;
+- preventing an external artifact from changing after its reported snapshot
+  identity has been finalized;
 - recovery or repair of a rejected artifact.
 
 Failing verification never triggers automatic repair. Mutation belongs to a
