@@ -35,6 +35,7 @@ class Report:
     artifact_name: str | None = None
     artifact_version: str | None = None
     findings: tuple[Finding, ...] = field(default_factory=tuple)
+    source_snapshot_sha256: str | None = None
 
     def __post_init__(self) -> None:
         # Snapshot any caller-provided iterable so the final verdict cannot be
@@ -63,6 +64,8 @@ class Report:
         }
         if self.manifest_sha256 is not None:
             result["manifest_sha256"] = self.manifest_sha256
+        if self.source_snapshot_sha256 is not None:
+            result["source_snapshot_sha256"] = self.source_snapshot_sha256
         if self.artifact_name is not None:
             result["artifact_name"] = self.artifact_name
         if self.artifact_version is not None:

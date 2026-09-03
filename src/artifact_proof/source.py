@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 import math
 import os
 from pathlib import Path
@@ -45,6 +46,10 @@ class ArtifactSource:
     def sha256(self, relative: str) -> str:
         return hashlib.sha256(self.read_bytes(relative)).hexdigest()
 
+    def finalize_snapshot(self) -> str:
+        """Return the stable source identity at the validation linearization point."""
+        raise NotImplementedError
+
     def close(self) -> None:
         return None
 
@@ -62,6 +67,7 @@ class DirectorySource(ArtifactSource):
         self.root = root.resolve()
         self.limits = limits
         self._snapshots = self._inventory()
+        self._observed_digests: dict[str, str] = {}
 
     def _inventory(self) -> dict[str, tuple[int, int, int, int]]:
         files: dict[str, tuple[int, int, int, int]] = {}
@@ -130,19 +136,46 @@ class DirectorySource(ArtifactSource):
             os.close(descriptor)
         if len(data) > limit:
             raise SourceError(f"file exceeds read limit: {canonical}")
+        digest = hashlib.sha256(data).hexdigest()
+        previous = self._observed_digests.setdefault(canonical, digest)
+        if previous != digest:
+            raise SourceError(f"artifact file changed across validation reads: {canonical}")
         return data
+
+    def finalize_snapshot(self) -> str:
+        # Detect ordinary replacement, growth, removal, and topology drift
+        # before final content observations begin.
+        if self._inventory() != self._snapshots:
+            raise SourceError("artifact directory changed during validation")
+
+        # Re-observe every bounded inventory member. Proof-bearing files must
+        # equal their earlier read; permitted unlisted files become part of the
+        # explicit final snapshot identity without adding a hidden size cap.
+        for relative in sorted(self._snapshots):
+            self.read_bytes(relative)
+
+        # Detect mutation after an early member's final read but before the
+        # finalization pass completes.
+        if self._inventory() != self._snapshots:
+            raise SourceError("artifact directory changed during snapshot finalization")
+        return _snapshot_digest("directory", self._observed_digests)
 
 
 class ZipSource(ArtifactSource):
     def __init__(self, archive: Path, limits: SourceLimits) -> None:
         if not archive.is_file():
             raise SourceError(f"artifact ZIP does not exist: {archive}")
+        self.path = archive.resolve()
         try:
-            self.archive = zipfile.ZipFile(archive, "r")
+            self.archive = zipfile.ZipFile(self.path, "r")
         except zipfile.BadZipFile as exc:
             raise SourceError("artifact is not a valid ZIP") from exc
         self.limits = limits
         try:
+            self._archive_metadata, self._archive_sha256 = _hash_regular_path(self.path)
+            opened = os.fstat(self.archive.fp.fileno()) if self.archive.fp is not None else None
+            if opened is None or _metadata_identity(opened) != self._archive_metadata:
+                raise SourceError("artifact ZIP changed while being opened")
             self._members = self._inventory()
         except Exception:
             self.archive.close()
@@ -197,6 +230,50 @@ class ZipSource(ArtifactSource):
 
     def close(self) -> None:
         self.archive.close()
+
+    def finalize_snapshot(self) -> str:
+        metadata, digest = _hash_regular_path(self.path)
+        if metadata != self._archive_metadata or digest != self._archive_sha256:
+            raise SourceError("artifact ZIP changed during validation")
+        return _snapshot_digest("zip", {"container": digest})
+
+
+def _metadata_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    return (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns)
+
+
+def _hash_regular_path(path: Path) -> tuple[tuple[int, int, int, int], str]:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise SourceError(f"artifact ZIP cannot be opened safely: {exc}") from exc
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise SourceError("artifact ZIP is not a regular file")
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+        if _metadata_identity(after) != _metadata_identity(before):
+            raise SourceError("artifact ZIP changed while being hashed")
+        return _metadata_identity(before), digest.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
+def _snapshot_digest(kind: str, digests: dict[str, str]) -> str:
+    payload = {
+        "format": "artifact-source-snapshot-v1",
+        "kind": kind,
+        "entries": dict(sorted(digests.items())),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _bounded_read(handle: BinaryIO, limit: int) -> bytes:

@@ -27,6 +27,8 @@ of silently promoting it to trust.
 - compare the host to a binding or non-binding reference environment;
 - freeze the completed finding set so a rejected proof cannot be rewritten as
   passing after validation;
+- finalize a stable source snapshot identity so an earlier successful check
+  cannot hide source drift later in the same verification run;
 - emit stable human-readable or JSON proof reports.
 
 ## Quick start
