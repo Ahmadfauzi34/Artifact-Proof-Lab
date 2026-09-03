@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 import hashlib
 import json
 from pathlib import Path
@@ -8,7 +9,7 @@ import unittest
 import zipfile
 
 from artifact_proof.engine import verify_artifact
-from artifact_proof.model import Status
+from artifact_proof.model import Finding, Report, Status
 from tests.support import encode_manifest, manifest_for, nested_zip, sqlite_bytes, write_directory, write_zip
 
 
@@ -225,3 +226,32 @@ class ReportDeterminismTests(unittest.TestCase):
             write_directory(root, {}, manifest_for({}))
             rendered = json.dumps(verify_artifact(root).to_dict(), sort_keys=True)
             self.assertIn('"format": "artifact-proof-report-v1"', rendered)
+
+    def test_failed_report_verdict_cannot_be_rewritten_after_finalization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "artifact"
+            files = {"payload.txt": b"original"}
+            write_directory(root, files, manifest_for(files))
+            (root / "payload.txt").write_bytes(b"tampered")
+
+            report = verify_artifact(root)
+            original = report.to_dict()
+            self.assertEqual(report.status, "FAIL")
+
+            with self.assertRaises(AttributeError):
+                report.findings.clear()
+            with self.assertRaises(FrozenInstanceError):
+                report.findings = ()
+
+            self.assertEqual(report.to_dict(), original)
+            self.assertEqual(report.status, "FAIL")
+
+    def test_report_snapshots_builder_findings_without_hidden_size_limit(self):
+        builder_findings = [
+            Finding("contract", "contract", Status.FAIL, "rejected")
+        ]
+        report = Report("artifact", "sealed", findings=builder_findings)
+        builder_findings.clear()
+
+        self.assertEqual(len(report.findings), 1)
+        self.assertEqual(report.status, "FAIL")

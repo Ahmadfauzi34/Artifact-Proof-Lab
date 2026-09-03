@@ -27,14 +27,19 @@ class Finding:
         return {key: value for key, value in result.items() if value is not None}
 
 
-@dataclass
+@dataclass(frozen=True)
 class Report:
     artifact: str
     profile: str
     manifest_sha256: str | None = None
     artifact_name: str | None = None
     artifact_version: str | None = None
-    findings: list[Finding] = field(default_factory=list)
+    findings: tuple[Finding, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        # Snapshot any caller-provided iterable so the final verdict cannot be
+        # rewritten through an alias retained by a builder or host adapter.
+        object.__setattr__(self, "findings", tuple(self.findings))
 
     @property
     def passed(self) -> bool:
@@ -43,9 +48,6 @@ class Report:
     @property
     def status(self) -> str:
         return "PASS" if self.passed else "FAIL"
-
-    def add(self, finding: Finding) -> None:
-        self.findings.append(finding)
 
     def to_dict(self) -> dict[str, Any]:
         counts = {status.value: 0 for status in Status}

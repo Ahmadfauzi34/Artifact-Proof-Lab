@@ -25,6 +25,8 @@ of silently promoting it to trust.
 - run SQLite `quick_check` or `integrity_check` read-only;
 - prove that a member of a nested cold-backup ZIP matches a target file;
 - compare the host to a binding or non-binding reference environment;
+- freeze the completed finding set so a rejected proof cannot be rewritten as
+  passing after validation;
 - emit stable human-readable or JSON proof reports.
 
 ## Quick start
