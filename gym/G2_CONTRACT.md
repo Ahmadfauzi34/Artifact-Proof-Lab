@@ -5,8 +5,9 @@ the compatibility boundary and is not replaced by this file.
 
 ## Additional invariants
 
-15. PublicTask is host-side state. Policies and generators receive only
-    AgentTaskView plus observations and their own trajectory.
+15. PublicTask is host-side state. HostTaskDescriptor is the preferred G2 name;
+    PublicTask remains as a compatibility alias. Policies and generators receive
+    only AgentTaskView plus observations and their own trajectory.
 16. Environment objects stay behind HostGateway. A private/native benchmark may
     implement HostGateway in another process or machine without changing agent
     code.
@@ -31,11 +32,14 @@ the compatibility boundary and is not replaced by this file.
 24. Private holdout/native evaluation should keep host implementation, hidden
     evaluator, oracle/reference state, and snapshots outside the agent workspace.
     Only the sanitized host protocol crosses that boundary.
+25. Private policy reasoning is not proof material. The ledger and host protocol
+    commit only to externally observable typed decisions/actions, never require a
+    chain-of-thought or hidden rationale.
 
 ## Reference topology
 
     PRIVATE / HOST SIDE
-      HostTaskDescriptor (PublicTask)
+      HostTaskDescriptor
         -> HostGateway
         -> hidden Environment / evaluator / snapshots
         -> observations
@@ -65,7 +69,10 @@ A valid ledger can establish:
 - which decision caused a recorded action result;
 - that the recorded event chain was not reordered or rewritten without changing
   the ledger root;
-- which terminal reason closed the episode.
+- which terminal reason closed the episode;
+- that the ledger is bound to the same sanitized task view, host descriptor,
+  observation frontier, semantic receipt, and provenance receipt used by the
+  proof bundle.
 
 It does not establish semantic correctness by itself.
 

@@ -39,6 +39,10 @@ class TerminalReason(str, Enum):
     INVALID_POLICY_ACTION = "INVALID_POLICY_ACTION"
 
 
+class HostActionRejected(RuntimeError):
+    """Typed host rejection for an action outside the exposed contract."""
+
+
 @dataclass(frozen=True)
 class PolicyDecision:
     kind: DecisionKind
@@ -130,6 +134,9 @@ class PublicTask:
             public_tests=self.public_tests,
             public_inputs=tuple(self.environment.get("public_inputs", ())),
         )
+
+
+HostTaskDescriptor = PublicTask
 
 
 @dataclass(frozen=True)
@@ -421,7 +428,6 @@ class ReferenceGym:
                     decision={
                         "kind": decision.kind.value,
                         "action": decision.action,
-                        "rationale": decision.rationale,
                     },
                     visible_observations=[item.to_dict() for item in observations],
                 )
@@ -460,7 +466,7 @@ class ReferenceGym:
 
                 try:
                     outcome = host.step(start.session_id, action, candidate=candidate)
-                except (KeyError, ValueError):
+                except HostActionRejected:
                     trajectory.append("DEFER_NO_ADMISSIBLE")
                     terminal_reason = TerminalReason.INVALID_POLICY_ACTION
                     terminal_cause_decision_hash = decision_entry.entry_hash

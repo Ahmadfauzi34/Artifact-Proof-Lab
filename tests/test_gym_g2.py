@@ -96,6 +96,7 @@ class GymG2Tests(unittest.TestCase):
             document["entries"][-1]["payload"]["terminal_reason"],
             TerminalReason.ENVIRONMENT_DONE.value,
         )
+        self.assertNotIn("rationale", decision["payload"]["decision"])
 
     def test_ledger_tamper_fails_closed(self):
         task = load_task(GYM_ROOT / "tasks" / "train" / "tg_a7.json")
@@ -103,7 +104,7 @@ class GymG2Tests(unittest.TestCase):
         document = ledger_document(result)
         tampered = deepcopy(document)
         decision = next(entry for entry in tampered["entries"] if entry["kind"] == "DECISION")
-        decision["payload"]["decision"]["rationale"] = "rewritten-after-the-fact"
+        decision["payload"]["decision"]["action"] = "RESTART_PROCESS"
 
         valid, reason = verify_ledger_document(tampered)
         self.assertFalse(valid)

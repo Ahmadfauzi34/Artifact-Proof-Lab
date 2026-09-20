@@ -52,8 +52,7 @@
           "required": ["kind"],
           "properties": {
             "kind": {"type": "string", "minLength": 1},
-            "action": {"type": ["string", "null"]},
-            "rationale": {"type": "string"}
+            "action": {"type": ["string", "null"]}
           }
         },
         "candidate": {"type": ["string", "null"]}

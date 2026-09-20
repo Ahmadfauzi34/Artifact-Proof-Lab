@@ -4,7 +4,14 @@ from dataclasses import dataclass
 import hashlib
 from typing import Callable, Protocol
 
-from .core import AgentTaskView, Environment, Observation, PublicTask, StepOutcome
+from .core import (
+    AgentTaskView,
+    Environment,
+    HostActionRejected,
+    PublicTask,
+    Observation,
+    StepOutcome,
+)
 
 
 @dataclass(frozen=True)
@@ -59,7 +66,7 @@ class LocalReferenceHost:
     def step(self, session_id: str, action: str, *, candidate: str | None = None) -> StepOutcome:
         session = self._session(session_id)
         if not _action_allowed(session.task, action):
-            raise ValueError(f"action is outside host contract: {action}")
+            raise HostActionRejected(f"action is outside host contract: {action}")
         return session.environment.step(action, candidate=candidate)
 
     def semantic_verdict(self, session_id: str) -> bool:
