@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/task.schema.json",
+  "title": "Agent Gym Public Task Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "domain", "skill_targets", "description", "environment", "allowed_actions", "budget", "split"],
+  "properties": {
+    "task_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "skill_targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "description": {"type": "string", "minLength": 1},
+    "environment": {
+      "type": "object",
+      "required": ["snapshot_id", "runner"],
+      "properties": {
+        "snapshot_id": {"type": "string", "minLength": 1},
+        "runner": {"type": "string", "minLength": 1},
+        "public_inputs": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "allowed_actions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "budget": {
+      "type": "object",
+      "required": ["max_steps"],
+      "properties": {
+        "max_steps": {"type": "integer", "minimum": 1},
+        "max_tool_cost": {"type": ["number", "null"], "minimum": 0},
+        "max_generative_calls": {"type": ["integer", "null"], "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "split": {"enum": ["train", "validation", "holdout", "external_real"]},
+    "public_tests": {"type": "array", "items": {"type": "string"}},
+    "metadata": {"type": "object", "description": "Must not contain oracle labels, reference patch, expected semantic class, or hidden validator details."}
+  }
+}

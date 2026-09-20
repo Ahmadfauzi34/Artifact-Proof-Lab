@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/observation.schema.json",
+  "title": "Agent Gym Observation Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "observation_id", "source_lineage_root", "check_id", "probe_id", "attempt_id",
+    "sequence_index", "logical_tick", "observation_type", "status", "value", "cost"
+  ],
+  "properties": {
+    "observation_id": {"type": "string", "minLength": 1},
+    "source_lineage_root": {"type": "string", "minLength": 1},
+    "check_id": {"type": "string", "minLength": 1},
+    "probe_id": {"type": "string", "minLength": 1},
+    "attempt_id": {"type": "integer", "minimum": 1},
+    "sequence_index": {"type": "integer", "minimum": 0},
+    "logical_tick": {"type": "integer", "minimum": 0},
+    "observation_type": {"type": "string", "minLength": 1},
+    "status": {"type": "string", "minLength": 1},
+    "value": {},
+    "cost": {"type": "number", "minimum": 0},
+    "raw_payload_ref": {"type": ["string", "null"]}
+  }
+}
