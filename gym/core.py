@@ -3,11 +3,22 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 import hashlib
-import json
 import math
 from pathlib import Path
 import tempfile
-from typing import Any, Callable, Iterable, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Protocol
+
+from .ledger import (
+    LedgerEntry,
+    TrajectoryLedger,
+    canonical_json_bytes,
+    observation_frontier_sha256,
+    sha256_json,
+    verify_ledger_document,
+)
+
+if TYPE_CHECKING:
+    from .host_boundary import HostGateway
 
 
 class DecisionKind(str, Enum):
@@ -16,6 +27,20 @@ class DecisionKind(str, Enum):
     DEFER_NO_SUPPORT = "DEFER_NO_SUPPORT"
     DEFER_NO_ADMISSIBLE = "DEFER_NO_ADMISSIBLE"
     CALL_GENERATIVE = "CALL_GENERATIVE"
+
+
+class TerminalReason(str, Enum):
+    ENVIRONMENT_DONE = "ENVIRONMENT_DONE"
+    TOOL_COST_BUDGET_EXHAUSTED = "TOOL_COST_BUDGET_EXHAUSTED"
+    STEP_BUDGET_EXHAUSTED = "STEP_BUDGET_EXHAUSTED"
+    GENERATIVE_BUDGET_EXHAUSTED = "GENERATIVE_BUDGET_EXHAUSTED"
+    GENERATOR_UNAVAILABLE = "GENERATOR_UNAVAILABLE"
+    ACTION_UNSUPPORTED = "ACTION_UNSUPPORTED"
+    INVALID_POLICY_ACTION = "INVALID_POLICY_ACTION"
+
+
+class HostActionRejected(RuntimeError):
+    """Typed host rejection for an action outside the exposed contract."""
 
 
 @dataclass(frozen=True)
@@ -54,11 +79,7 @@ class Observation:
 
 @dataclass(frozen=True)
 class AgentTaskView:
-    """Only the task surface a policy/generator is allowed to observe.
-
-    Host-only split labels, skill targets, snapshot identifiers, runner identity,
-    and benchmark metadata intentionally do not cross this boundary.
-    """
+    """Only the task surface a policy/generator is allowed to observe."""
 
     task_id: str
     domain: str
@@ -71,6 +92,12 @@ class AgentTaskView:
 
 @dataclass(frozen=True)
 class PublicTask:
+    """Host-side task descriptor.
+
+    The historical class name is retained for compatibility. Policies and
+    generators must receive AgentTaskView, never this descriptor.
+    """
+
     task_id: str
     domain: str
     skill_targets: tuple[str, ...]
@@ -109,6 +136,9 @@ class PublicTask:
         )
 
 
+HostTaskDescriptor = PublicTask
+
+
 @dataclass(frozen=True)
 class StepOutcome:
     observations: tuple[Observation, ...]
@@ -143,6 +173,7 @@ class LearningSink(Protocol):
 class AdmissionReceipt:
     semantic_valid: bool
     provenance_valid: bool
+    trajectory_valid: bool
     integrity_valid: bool
     admitted: bool
     reason: str
@@ -160,8 +191,12 @@ class EpisodeResult:
     reward_channels: Mapping[str, float]
     learning_updated: bool
     generative_calls: int
+    terminal_reason: str
     budget_exhausted: bool = False
     generated_candidates: tuple[str, ...] = ()
+    ledger_root_sha256: str | None = None
+    ledger_entry_count: int = 0
+    ledger_entries: tuple[LedgerEntry, ...] = ()
 
     @property
     def accepted(self) -> bool:
@@ -218,46 +253,92 @@ class EvidenceAdmission:
 
 
 class ProofBundleVerifier:
-    """Bridge semantic admission to Artifact-Proof-Lab's immutable proof core.
+    """Bridge semantic/trajectory admission to Artifact-Proof-Lab integrity proof."""
 
-    The gym never treats this integrity result as semantic truth. The semantic
-    evaluator decides whether the trajectory solved the task; artifact_proof
-    independently proves that the admitted receipt and trajectory bundle were
-    not rewritten before finalization.
-    """
-
-    def verify(self, task: PublicTask, observations: tuple[Observation, ...], semantic_valid: bool) -> tuple[bool, Mapping[str, Any] | None]:
+    def verify(
+        self,
+        task: PublicTask,
+        observations: tuple[Observation, ...],
+        semantic_valid: bool,
+        *,
+        provenance_valid: bool | None = None,
+        ledger_document: Mapping[str, Any] | None = None,
+    ) -> tuple[bool, Mapping[str, Any] | None]:
         try:
             from artifact_proof import verify_artifact
         except ImportError as exc:
-            # Missing proof authority is a hard boundary failure. A standalone
-            # consumer may still run the environment, but cannot obtain proof
-            # closure or learning credit without the real verifier.
             return False, {"status": "FAIL", "reason": f"artifact_proof import unavailable: {exc}"}
+
+        ledger_valid_for_bundle = False
+        if ledger_document is not None:
+            ledger_valid, ledger_reason = verify_ledger_document(ledger_document)
+            if not ledger_valid:
+                return False, {"status": "FAIL", "reason": f"trajectory ledger rejected: {ledger_reason}"}
+
+            entries = ledger_document.get("entries")
+            start_payload = entries[0].get("payload") if isinstance(entries, list) and entries else None
+            terminal_payload = entries[-1].get("payload") if isinstance(entries, list) and entries else None
+            if not isinstance(start_payload, dict):
+                return False, {"status": "FAIL", "reason": "trajectory ledger start payload missing"}
+            if not isinstance(terminal_payload, dict):
+                return False, {"status": "FAIL", "reason": "trajectory ledger terminal payload missing"}
+
+            expected_agent_view = sha256_json(asdict(task.agent_view()))
+            expected_host_task = _host_task_commitment(task)
+            if start_payload.get("agent_task_view_sha256") != expected_agent_view:
+                return False, {"status": "FAIL", "reason": "trajectory ledger agent task commitment mismatch"}
+            if start_payload.get("host_task_commitment") != expected_host_task:
+                return False, {"status": "FAIL", "reason": "trajectory ledger host task commitment mismatch"}
+
+            expected_frontier = observation_frontier_sha256(
+                [item.to_dict() for item in observations]
+            )
+            if terminal_payload.get("observation_frontier_sha256") != expected_frontier:
+                return False, {"status": "FAIL", "reason": "trajectory ledger observation frontier mismatch"}
+            if terminal_payload.get("semantic_valid") != bool(semantic_valid):
+                return False, {"status": "FAIL", "reason": "trajectory ledger semantic receipt mismatch"}
+            if (
+                provenance_valid is not None
+                and terminal_payload.get("provenance_valid") != bool(provenance_valid)
+            ):
+                return False, {"status": "FAIL", "reason": "trajectory ledger provenance receipt mismatch"}
+            ledger_valid_for_bundle = True
 
         with tempfile.TemporaryDirectory(prefix="proof-gym-") as tmp:
             root = Path(tmp) / "episode"
             root.mkdir()
+            agent_task_view = asdict(task.agent_view())
             trajectory = {
-                "format": "proof-gym-trajectory-v1",
+                "format": "proof-gym-trajectory-v2",
                 "task_id": task.task_id,
                 "split": task.split,
                 "observations": [item.to_dict() for item in observations],
             }
-            admission = {
-                "format": "proof-gym-admission-v1",
+            admission: dict[str, Any] = {
+                "format": "proof-gym-admission-v2",
                 "task_id": task.task_id,
                 "semantic_valid": semantic_valid,
+                "host_task_commitment": _host_task_commitment(task),
             }
+            if provenance_valid is not None:
+                admission["provenance_valid"] = provenance_valid
             files = {
-                "trajectory.json": _canonical_json_bytes(trajectory),
-                "admission.json": _canonical_json_bytes(admission),
+                "agent_task_view.json": canonical_json_bytes(agent_task_view),
+                "trajectory.json": canonical_json_bytes(trajectory),
             }
+            if ledger_document is not None:
+                ledger_bytes = canonical_json_bytes(ledger_document)
+                files["ledger.json"] = ledger_bytes
+                admission["trajectory_valid"] = ledger_valid_for_bundle
+                admission["trajectory_ledger_sha256"] = hashlib.sha256(ledger_bytes).hexdigest()
+                admission["trajectory_ledger_root_sha256"] = ledger_document.get("root_sha256")
+            files["admission.json"] = canonical_json_bytes(admission)
+
             for name, data in files.items():
                 (root / name).write_bytes(data)
             manifest = {
                 "format": "artifact-proof-manifest-v1",
-                "artifact": {"name": "proof-gym-episode", "version": "1"},
+                "artifact": {"name": "proof-gym-episode", "version": "2"},
                 "files": {
                     name: {"sha256": hashlib.sha256(data).hexdigest()}
                     for name, data in sorted(files.items())
@@ -265,23 +346,28 @@ class ProofBundleVerifier:
                 "coverage": {"complete": True, "allow_unlisted": []},
                 "checks": [],
             }
-            (root / "ARTIFACT_PROOF.json").write_bytes(_canonical_json_bytes(manifest))
+            (root / "ARTIFACT_PROOF.json").write_bytes(canonical_json_bytes(manifest))
             report = verify_artifact(root)
             return report.passed, report.to_dict()
-
-
-def _canonical_json_bytes(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 class ReferenceGym:
     def __init__(
         self,
-        environment_factory: Callable[[PublicTask], Environment],
+        environment_factory: Callable[[PublicTask], Environment] | None = None,
         *,
+        host_gateway: "HostGateway | None" = None,
         proof_verifier: ProofBundleVerifier | None = None,
     ) -> None:
-        self._environment_factory = environment_factory
+        if environment_factory is not None and host_gateway is not None:
+            raise ValueError("provide environment_factory or host_gateway, not both")
+        if host_gateway is None:
+            if environment_factory is None:
+                raise ValueError("a host gateway or environment factory is required")
+            from .host_boundary import LocalReferenceHost
+
+            host_gateway = LocalReferenceHost(environment_factory)
+        self._host_gateway = host_gateway
         self._proof_verifier = proof_verifier or ProofBundleVerifier()
 
     def run(
@@ -292,104 +378,214 @@ class ReferenceGym:
         generator: Generator | None = None,
         learning_sink: LearningSink | None = None,
     ) -> EpisodeResult:
-        env = self._environment_factory(task)
-        agent_task = task.agent_view()
-        observations = list(env.reset())
-        trajectory: list[str] = []
-        generated_candidates: list[str] = []
-        generative_calls = 0
-        max_steps = int(task.budget["max_steps"])
-        max_generative = task.budget.get("max_generative_calls")
-        max_generative = 0 if max_generative is None else int(max_generative)
-        max_tool_cost = task.budget.get("max_tool_cost")
-        max_tool_cost = None if max_tool_cost is None else float(max_tool_cost)
-        done = False
-        budget_exhausted = False
+        host = self._host_gateway
+        start = host.start(task)
+        try:
+            expected_agent_task = task.agent_view()
+            if start.agent_task != expected_agent_task:
+                raise RuntimeError("host returned an agent task surface inconsistent with the host descriptor")
 
-        if max_tool_cost is not None and sum(item.cost for item in observations) > max_tool_cost:
-            budget_exhausted = True
-            trajectory.append("BUDGET_EXHAUSTED")
+            agent_task = start.agent_task
+            observations = list(start.observations)
+            trajectory: list[str] = []
+            generated_candidates: list[str] = []
+            generative_calls = 0
+            max_steps = int(task.budget["max_steps"])
+            max_generative = task.budget.get("max_generative_calls")
+            max_generative = 0 if max_generative is None else int(max_generative)
+            max_tool_cost = task.budget.get("max_tool_cost")
+            max_tool_cost = None if max_tool_cost is None else float(max_tool_cost)
+            done = False
+            budget_exhausted = False
+            terminal_reason: TerminalReason | None = None
+            terminal_cause_decision_hash: str | None = None
+            steps_taken = 0
 
-        for _step in range(max_steps if not budget_exhausted else 0):
-            decision = policy.decide(agent_task, tuple(observations), tuple(trajectory))
-            if decision.kind is DecisionKind.SELECT:
-                action = decision.action
-                if action is None or action not in task.allowed_actions:
-                    trajectory.append("DEFER_NO_ADMISSIBLE")
-                    break
-                trajectory.append(action)
-                outcome = env.step(action)
-            elif decision.kind is DecisionKind.CALL_GENERATIVE:
-                if "CALL_GENERATIVE" not in task.allowed_actions or generator is None or generative_calls >= max_generative:
-                    trajectory.append("DEFER_NO_SUPPORT")
-                    break
-                generative_calls += 1
-                candidate = generator.generate(agent_task, tuple(observations), generative_calls)
-                generated_candidates.append(candidate)
-                trajectory.append("CALL_GENERATIVE")
-                outcome = env.step("CALL_GENERATIVE", candidate=candidate)
-            else:
-                trajectory.append(decision.kind.value)
-                outcome = env.step(decision.kind.value)
+            ledger = TrajectoryLedger(
+                agent_task_view=asdict(agent_task),
+                host_task_commitment=_host_task_commitment(task),
+            )
+            ledger.record_observation_batch(
+                [item.to_dict() for item in observations],
+                phase="reset",
+            )
 
-            observations.extend(outcome.observations)
-            if max_tool_cost is not None and sum(item.cost for item in observations) > max_tool_cost:
+            if max_tool_cost is not None and _tool_cost(observations) > max_tool_cost:
                 budget_exhausted = True
+                terminal_reason = TerminalReason.TOOL_COST_BUDGET_EXHAUSTED
                 trajectory.append("BUDGET_EXHAUSTED")
-                break
-            if outcome.done:
-                done = True
-                break
 
-        semantic_valid = bool(done and not budget_exhausted and env.semantic_verdict())
-        provenance_valid, provenance_reason = EvidenceAdmission.provenance_valid(observations)
-        integrity_valid, proof_report = self._proof_verifier.verify(task, tuple(observations), semantic_valid)
-        admitted = semantic_valid and provenance_valid and integrity_valid
-        if budget_exhausted:
-            reason = "tool-cost budget exhausted"
-        elif not semantic_valid:
-            reason = "semantic evaluator rejected trajectory"
-        elif not provenance_valid:
-            reason = provenance_reason
-        elif not integrity_valid:
-            reason = "proof bundle integrity rejected"
-        else:
-            reason = "evidence admitted"
-        admission = AdmissionReceipt(
-            semantic_valid=semantic_valid,
-            provenance_valid=provenance_valid,
-            integrity_valid=integrity_valid,
-            admitted=admitted,
-            reason=reason,
-            proof_report=proof_report,
-        )
+            while terminal_reason is None:
+                if steps_taken >= max_steps:
+                    budget_exhausted = True
+                    terminal_reason = TerminalReason.STEP_BUDGET_EXHAUSTED
+                    trajectory.append("BUDGET_EXHAUSTED")
+                    break
 
-        rewards = {
-            "task_acceptance": 1.0 if semantic_valid else 0.0,
-            "proof_closure": 1.0 if provenance_valid and integrity_valid else 0.0,
-            "admission_credit": 1.0 if admitted else 0.0,
-            "resource_cost": -sum(item.cost for item in observations),
-            "useless_retry_penalty": -float(_count_useless_retries(observations)),
-            "defer_quality": 1.0 if admitted and any(step.startswith("DEFER_") for step in trajectory) else 0.0,
-        }
-        provisional = EpisodeResult(
-            task_id=task.task_id,
-            split=task.split,
-            domain=task.domain,
-            trajectory=tuple(trajectory),
-            observations=tuple(observations),
-            admission=admission,
-            reward_channels=rewards,
-            learning_updated=False,
-            generative_calls=generative_calls,
-            budget_exhausted=budget_exhausted,
-            generated_candidates=tuple(generated_candidates),
-        )
-        learning_updated = False
-        if admitted and task.split == "train" and learning_sink is not None:
-            learning_sink.update(provisional)
-            learning_updated = True
-        return replace(provisional, learning_updated=learning_updated)
+                decision = policy.decide(agent_task, tuple(observations), tuple(trajectory))
+                steps_taken += 1
+                decision_entry = ledger.record_decision(
+                    decision={
+                        "kind": decision.kind.value,
+                        "action": decision.action,
+                    },
+                    visible_observations=[item.to_dict() for item in observations],
+                )
+
+                candidate: str | None = None
+                if decision.kind is DecisionKind.SELECT:
+                    action = decision.action
+                    if action is None or action not in agent_task.allowed_actions:
+                        trajectory.append("DEFER_NO_ADMISSIBLE")
+                        terminal_reason = TerminalReason.INVALID_POLICY_ACTION
+                        terminal_cause_decision_hash = decision_entry.entry_hash
+                        break
+                elif decision.kind is DecisionKind.CALL_GENERATIVE:
+                    action = "CALL_GENERATIVE"
+                    if action not in agent_task.allowed_actions:
+                        trajectory.append("DEFER_NO_SUPPORT")
+                        terminal_reason = TerminalReason.ACTION_UNSUPPORTED
+                        terminal_cause_decision_hash = decision_entry.entry_hash
+                        break
+                    if generator is None:
+                        trajectory.append("DEFER_NO_SUPPORT")
+                        terminal_reason = TerminalReason.GENERATOR_UNAVAILABLE
+                        terminal_cause_decision_hash = decision_entry.entry_hash
+                        break
+                    if generative_calls >= max_generative:
+                        budget_exhausted = True
+                        trajectory.append("BUDGET_EXHAUSTED")
+                        terminal_reason = TerminalReason.GENERATIVE_BUDGET_EXHAUSTED
+                        terminal_cause_decision_hash = decision_entry.entry_hash
+                        break
+                    generative_calls += 1
+                    candidate = generator.generate(agent_task, tuple(observations), generative_calls)
+                    generated_candidates.append(candidate)
+                else:
+                    action = decision.kind.value
+
+                try:
+                    outcome = host.step(start.session_id, action, candidate=candidate)
+                except HostActionRejected:
+                    trajectory.append("DEFER_NO_ADMISSIBLE")
+                    terminal_reason = TerminalReason.INVALID_POLICY_ACTION
+                    terminal_cause_decision_hash = decision_entry.entry_hash
+                    break
+
+                trajectory.append(action)
+                ledger.record_action_result(
+                    decision_entry_hash=decision_entry.entry_hash,
+                    action=action,
+                    observations=[item.to_dict() for item in outcome.observations],
+                    done=outcome.done,
+                    accepted_candidate=outcome.accepted_candidate,
+                    candidate=candidate,
+                )
+                observations.extend(outcome.observations)
+
+                if max_tool_cost is not None and _tool_cost(observations) > max_tool_cost:
+                    budget_exhausted = True
+                    trajectory.append("BUDGET_EXHAUSTED")
+                    terminal_reason = TerminalReason.TOOL_COST_BUDGET_EXHAUSTED
+                    break
+                if outcome.done:
+                    done = True
+                    terminal_reason = TerminalReason.ENVIRONMENT_DONE
+                    break
+
+            assert terminal_reason is not None
+            semantic_valid = bool(
+                done
+                and not budget_exhausted
+                and terminal_reason is TerminalReason.ENVIRONMENT_DONE
+                and host.semantic_verdict(start.session_id)
+            )
+            provenance_valid, provenance_reason = EvidenceAdmission.provenance_valid(observations)
+
+            ledger.record_terminal(
+                terminal_reason=terminal_reason.value,
+                semantic_valid=semantic_valid,
+                provenance_valid=provenance_valid,
+                budget_exhausted=budget_exhausted,
+                observations=[item.to_dict() for item in observations],
+                caused_by_decision_entry_hash=terminal_cause_decision_hash,
+            )
+            trajectory_valid, trajectory_reason = ledger.verify()
+            ledger_document = ledger.to_document()
+
+            integrity_valid, proof_report = self._proof_verifier.verify(
+                task,
+                tuple(observations),
+                semantic_valid,
+                provenance_valid=provenance_valid,
+                ledger_document=ledger_document,
+            )
+            admitted = semantic_valid and provenance_valid and trajectory_valid and integrity_valid
+
+            if budget_exhausted:
+                reason = terminal_reason.value
+            elif not semantic_valid:
+                reason = "semantic evaluator rejected trajectory"
+            elif not provenance_valid:
+                reason = provenance_reason
+            elif not trajectory_valid:
+                reason = trajectory_reason
+            elif not integrity_valid:
+                reason = "proof bundle integrity rejected"
+            else:
+                reason = "evidence admitted"
+
+            admission = AdmissionReceipt(
+                semantic_valid=semantic_valid,
+                provenance_valid=provenance_valid,
+                trajectory_valid=trajectory_valid,
+                integrity_valid=integrity_valid,
+                admitted=admitted,
+                reason=reason,
+                proof_report=proof_report,
+            )
+
+            rewards = {
+                "task_acceptance": 1.0 if semantic_valid else 0.0,
+                "proof_closure": 1.0 if provenance_valid and trajectory_valid and integrity_valid else 0.0,
+                "admission_credit": 1.0 if admitted else 0.0,
+                "resource_cost": -_tool_cost(observations),
+                "useless_retry_penalty": -float(_count_useless_retries(observations)),
+                "defer_quality": 1.0 if admitted and any(step.startswith("DEFER_") for step in trajectory) else 0.0,
+            }
+
+            provisional = EpisodeResult(
+                task_id=task.task_id,
+                split=task.split,
+                domain=task.domain,
+                trajectory=tuple(trajectory),
+                observations=tuple(observations),
+                admission=admission,
+                reward_channels=rewards,
+                learning_updated=False,
+                generative_calls=generative_calls,
+                terminal_reason=terminal_reason.value,
+                budget_exhausted=budget_exhausted,
+                generated_candidates=tuple(generated_candidates),
+                ledger_root_sha256=ledger.root_sha256,
+                ledger_entry_count=len(ledger.entries),
+                ledger_entries=ledger.entries,
+            )
+            learning_updated = False
+            if admitted and task.split == "train" and learning_sink is not None:
+                learning_sink.update(provisional)
+                learning_updated = True
+            return replace(provisional, learning_updated=learning_updated)
+        finally:
+            host.close(start.session_id)
+
+
+def _host_task_commitment(task: PublicTask) -> str:
+    return sha256_json(asdict(task))
+
+
+def _tool_cost(observations: Iterable[Observation]) -> float:
+    return sum(float(item.cost) for item in observations)
 
 
 def _count_useless_retries(observations: Iterable[Observation]) -> int:

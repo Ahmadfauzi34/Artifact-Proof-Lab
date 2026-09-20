@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/host-protocol.schema.json",
+  "title": "G2 Agent/Private-Host Logical Protocol",
+  "description": "Logical message shapes only; transport and machine placement are intentionally unspecified.",
+  "$defs": {
+    "agent_task_view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "domain", "description", "allowed_actions", "budget", "public_tests", "public_inputs"],
+      "properties": {
+        "task_id": {"type": "string", "minLength": 1},
+        "domain": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "allowed_actions": {"type": "array", "items": {"type": "string"}},
+        "budget": {"type": "object"},
+        "public_tests": {"type": "array", "items": {"type": "string"}},
+        "public_inputs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "required": [
+        "observation_id", "source_lineage_root", "check_id", "probe_id",
+        "attempt_id", "sequence_index", "logical_tick", "observation_type",
+        "status", "value", "cost"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "session_id", "task", "observations"],
+      "properties": {
+        "type": {"const": "session_start"},
+        "session_id": {"type": "string", "minLength": 1},
+        "task": {"$ref": "#/$defs/agent_task_view"},
+        "observations": {"type": "array", "items": {"$ref": "#/$defs/observation"}}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "session_id", "decision"],
+      "properties": {
+        "type": {"const": "agent_command"},
+        "session_id": {"type": "string", "minLength": 1},
+        "decision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {"type": "string", "minLength": 1},
+            "action": {"type": ["string", "null"]}
+          }
+        },
+        "candidate": {"type": ["string", "null"]}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "session_id", "observations", "done"],
+      "properties": {
+        "type": {"const": "step_result"},
+        "session_id": {"type": "string", "minLength": 1},
+        "observations": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+        "done": {"type": "boolean"},
+        "accepted_candidate": {"type": ["boolean", "null"]}
+      }
+    }
+  ]
+}

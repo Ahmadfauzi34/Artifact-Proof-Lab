@@ -31,13 +31,17 @@ def main(argv: list[str] | None = None) -> int:
                 "learning_updated": result.learning_updated,
                 "generative_calls": result.generative_calls,
                 "budget_exhausted": result.budget_exhausted,
+                "terminal_reason": result.terminal_reason,
+                "ledger_root_sha256": result.ledger_root_sha256,
+                "ledger_entry_count": result.ledger_entry_count,
                 "trajectory": list(result.trajectory),
             }
         )
     summary = {
-        "format": "proof-gym-reference-contract-run-v2",
+        "format": "proof-gym-reference-contract-run-v3",
         "evaluation_scope": "reference_contract_conformance_only",
         "native_competence_claim": False,
+        "trajectory_evidence": "hash_chained_v1",
         "tasks": rows,
         "learning_updates": list(learning.updates),
         "split_metrics": {
