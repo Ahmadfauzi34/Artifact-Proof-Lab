@@ -19,6 +19,7 @@ from .host_wire import (
     HostProtocolTimeout,
 )
 from .ledger import LedgerEntry, TrajectoryLedger
+from .private_pack import PrivateHoldoutPack, PrivatePackError, PrivatePackTask
 from .subprocess_host import SubprocessHostGateway
 
 __all__ = [
@@ -36,6 +37,9 @@ __all__ = [
     "LocalReferenceHost",
     "Observation",
     "PolicyDecision",
+    "PrivateHoldoutPack",
+    "PrivatePackError",
+    "PrivatePackTask",
     "PublicTask",
     "ReferenceGym",
     "SubprocessHostGateway",

@@ -60,18 +60,49 @@ def decode_message(raw: bytes, *, max_bytes: int = DEFAULT_MAX_MESSAGE_BYTES) ->
     def reject_constant(value: str) -> None:
         raise ValueError(f"non-finite JSON constant: {value}")
 
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = item
+        return result
+
     try:
-        value = json.loads(text, parse_constant=reject_constant)
+        value = json.loads(
+            text,
+            parse_constant=reject_constant,
+            object_pairs_hook=reject_duplicate_keys,
+        )
     except (json.JSONDecodeError, ValueError) as exc:
         raise HostProtocolError(f"invalid strict JSON frame: {exc}") from exc
     if not isinstance(value, dict):
         raise HostProtocolError("host protocol frame must be a JSON object")
+    _reject_nonfinite_numbers(value)
     if value.get("protocol") != PROTOCOL:
         raise HostProtocolError("host protocol version mismatch")
     request_id = value.get("request_id")
     if not isinstance(request_id, str) or not request_id:
         raise HostProtocolError("host protocol frame missing request_id")
     return value
+
+
+def _reject_nonfinite_numbers(value: Any) -> None:
+    if isinstance(value, bool) or value is None or isinstance(value, (str, int)):
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise HostProtocolError("host protocol frame contains non-finite number")
+        return
+    if isinstance(value, list):
+        for item in value:
+            _reject_nonfinite_numbers(item)
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            _reject_nonfinite_numbers(item)
+        return
+    raise HostProtocolError("host protocol frame contains unsupported JSON value")
 
 
 def agent_task_to_wire(task: AgentTaskView) -> dict[str, Any]:

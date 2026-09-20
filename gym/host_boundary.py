@@ -73,7 +73,12 @@ class LocalReferenceHost:
         return bool(self._session(session_id).environment.semantic_verdict())
 
     def close(self, session_id: str) -> None:
-        self._sessions.pop(session_id, None)
+        session = self._sessions.pop(session_id, None)
+        if session is None:
+            return
+        close = getattr(session.environment, "close", None)
+        if callable(close):
+            close()
 
     def _session(self, session_id: str) -> _HostSession:
         try:

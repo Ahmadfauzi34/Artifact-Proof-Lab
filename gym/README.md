@@ -213,19 +213,66 @@ score.
 
 Do not report reference-controller pass rate as agent capability.
 
+## G2.2 sealed private holdout packs
+
+G2.2 adds a hash-gated host-side package for private holdout descriptors,
+snapshots, hidden oracle state, and a runtime identity descriptor.
+
+The reference pack lives at:
+
+    gym/private_holdout_reference/
+
+and is deliberately inspectable. It exists only to regression-test pack
+validation and execution binding; it is not native competence evidence.
+
+A pack is admitted only when:
+
+- every declared task, snapshot, and runtime descriptor matches its SHA-256;
+- all paths are canonical, contained, regular files with no symlink traversal;
+- complete file coverage holds, so undeclared ambient files are rejected;
+- every task split is holdout or external_real;
+- snapshot id/domain agree with the HostTaskDescriptor;
+- the runtime descriptor id matches the host's expected runtime contract.
+
+After validation the snapshot is injected into host-only Environment state. For
+the reference filesystem-config holdout, both observable config state and the
+hidden semantic oracle are read from that verified snapshot. The policy still
+receives only AgentTaskView plus observations.
+
+The sealed HostTaskDescriptor receives only host-side digest metadata, so the
+existing G2 task commitment and trajectory ledger bind execution to the verified
+task/snapshot/runtime identities without exposing the raw pack to the policy.
+
+Reference command:
+
+    PYTHONPATH=src:. python -m gym.run_private_pack_reference
+
+The output explicitly reports
+`evaluation_scope=reference_private_pack_conformance_only` and
+`native_competence_claim=false`.
+
+The runtime descriptor in G2.2 is identity metadata with
+`attestation_scope=reference_identity_only`; it is not executable/binary,
+container, VM, or remote-host attestation.
+
+See `gym/G22_CONTRACT.md` and
+`gym/contracts/private_holdout_pack.schema.json`.
+
 ## Run locally
 
     PYTHONPATH=src:. python -m gym.validate_baseline
     PYTHONPATH=src:. python -m unittest discover -s tests -v
     PYTHONPATH=src:. python -m gym.run_reference
     PYTHONPATH=src:. python -m gym.run_subprocess_reference
+    PYTHONPATH=src:. python -m gym.run_private_pack_reference
 
-The last command runs the same reference fixtures through a separate host
-process and the G2.1 JSONL protocol. It remains reference contract conformance,
-not native competence evidence.
+The subprocess command exercises the G2.1 JSONL host boundary. The private-pack
+command exercises G2.2 sealed-pack verification plus that subprocess boundary.
+Both remain reference contract conformance, not native competence evidence.
 
 ## Upgrade rule
 
 Future gym upgrades should preserve gym/BASELINE_CONTRACT.md unless a later
-checkpoint explicitly replaces an invariant with a stricter contract. G2 and
-G2.1 are strict supersets; the G1 baseline file is intentionally unchanged.
+checkpoint explicitly replaces an invariant with a stricter contract. G2,
+G2.1, and G2.2 are strict supersets; the G1 baseline file is intentionally
+unchanged.

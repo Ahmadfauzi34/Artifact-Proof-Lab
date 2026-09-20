@@ -69,6 +69,14 @@ class GymG21WireTests(unittest.TestCase):
             decode_message(
                 b'{"protocol":"wrong","request_id":"r3","op":"PING","payload":{}}'
             )
+        with self.assertRaises(HostProtocolError):
+            decode_message(
+                b'{"protocol":"proof-gym-host-jsonl-v1","request_id":"r4","request_id":"r4","op":"PING","payload":{}}'
+            )
+        with self.assertRaises(HostProtocolError):
+            decode_message(
+                b'{"protocol":"proof-gym-host-jsonl-v1","request_id":"r5","op":"PING","payload":{"cost":1e999}}'
+            )
 
     def test_subprocess_start_surface_is_sanitized(self):
         task = load_task(GYM_ROOT / "tasks" / "train" / "tg_a7.json")
