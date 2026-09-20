@@ -1,0 +1,10 @@
+{
+  "task_id": "tg_c9",
+  "domain": "repository_coding",
+  "skill_targets": ["coding", "recovery", "proof", "conflicting_evidence"],
+  "description": "Conflicting claims exist about a tiny repository function. Use execution evidence, make a bounded candidate repair, and prove it with regression.",
+  "environment": {"snapshot_id": "rc-c9", "runner": "reference-v1", "public_inputs": []},
+  "allowed_actions": ["RUN_TARGETED_TEST", "APPLY_CANDIDATE_FIX", "RUN_REGRESSION", "ROLLBACK", "DEFER"],
+  "budget": {"max_steps": 5, "max_tool_cost": 5.0, "max_generative_calls": 0},
+  "split": "train"
+}

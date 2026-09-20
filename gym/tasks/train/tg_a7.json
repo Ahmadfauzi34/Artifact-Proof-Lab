@@ -1,0 +1,10 @@
+{
+  "task_id": "tg_a7",
+  "domain": "cli_process",
+  "skill_targets": ["perception", "exploration", "proof", "conflicting_evidence"],
+  "description": "Health observations conflict across attempts. Reduce uncertainty with the least destructive supported action and close proof.",
+  "environment": {"snapshot_id": "cp-a7", "runner": "reference-v1", "public_inputs": []},
+  "allowed_actions": ["INSPECT_PROCESS_STATE", "RETRY_HEALTHCHECK", "RESTART_PROCESS", "DEFER"],
+  "budget": {"max_steps": 3, "max_tool_cost": 3.0, "max_generative_calls": 0},
+  "split": "train"
+}
