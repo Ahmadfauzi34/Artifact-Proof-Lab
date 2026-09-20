@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import hashlib
 import json
 from typing import Any, Iterable, Mapping
@@ -159,18 +159,19 @@ class TrajectoryLedger:
         provenance_valid: bool,
         budget_exhausted: bool,
         observations: Iterable[Mapping[str, Any]],
+        caused_by_decision_entry_hash: str | None = None,
     ) -> LedgerEntry:
         frontier = [dict(item) for item in observations]
-        return self.append(
-            "TERMINAL",
-            {
-                "terminal_reason": terminal_reason,
-                "semantic_valid": bool(semantic_valid),
-                "provenance_valid": bool(provenance_valid),
-                "budget_exhausted": bool(budget_exhausted),
-                "observation_frontier_sha256": observation_frontier_sha256(frontier),
-            },
-        )
+        payload: dict[str, Any] = {
+            "terminal_reason": terminal_reason,
+            "semantic_valid": bool(semantic_valid),
+            "provenance_valid": bool(provenance_valid),
+            "budget_exhausted": bool(budget_exhausted),
+            "observation_frontier_sha256": observation_frontier_sha256(frontier),
+        }
+        if caused_by_decision_entry_hash is not None:
+            payload["caused_by_decision_entry_hash"] = caused_by_decision_entry_hash
+        return self.append("TERMINAL", payload)
 
     def to_document(self) -> dict[str, Any]:
         return {
@@ -267,6 +268,13 @@ def verify_ledger_document(document: Mapping[str, Any]) -> tuple[bool, str]:
         elif kind == "TERMINAL":
             if payload.get("observation_frontier_sha256") != observation_frontier_sha256(observed_frontier):
                 return False, "terminal receipt is not bound to final observations"
+            cause = payload.get("caused_by_decision_entry_hash")
+            if pending_decision_hash is not None:
+                if cause != pending_decision_hash:
+                    return False, "terminal receipt is not bound to its unresolved decision"
+            elif cause is not None:
+                return False, "terminal receipt claims a decision cause when none is pending"
+            pending_decision_hash = None
             terminal_seen = True
         else:
             return False, f"unsupported trajectory ledger entry kind: {kind}"

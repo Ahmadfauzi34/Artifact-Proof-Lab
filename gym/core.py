@@ -3,13 +3,19 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 import hashlib
-import json
 import math
 from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Protocol
 
-from .ledger import LedgerEntry, TrajectoryLedger, canonical_json_bytes, sha256_json, verify_ledger_document
+from .ledger import (
+    LedgerEntry,
+    TrajectoryLedger,
+    canonical_json_bytes,
+    observation_frontier_sha256,
+    sha256_json,
+    verify_ledger_document,
+)
 
 if TYPE_CHECKING:
     from .host_boundary import HostGateway
@@ -248,6 +254,7 @@ class ProofBundleVerifier:
         observations: tuple[Observation, ...],
         semantic_valid: bool,
         *,
+        provenance_valid: bool | None = None,
         ledger_document: Mapping[str, Any] | None = None,
     ) -> tuple[bool, Mapping[str, Any] | None]:
         try:
@@ -255,14 +262,45 @@ class ProofBundleVerifier:
         except ImportError as exc:
             return False, {"status": "FAIL", "reason": f"artifact_proof import unavailable: {exc}"}
 
+        ledger_valid_for_bundle = False
         if ledger_document is not None:
             ledger_valid, ledger_reason = verify_ledger_document(ledger_document)
             if not ledger_valid:
                 return False, {"status": "FAIL", "reason": f"trajectory ledger rejected: {ledger_reason}"}
 
+            entries = ledger_document.get("entries")
+            start_payload = entries[0].get("payload") if isinstance(entries, list) and entries else None
+            terminal_payload = entries[-1].get("payload") if isinstance(entries, list) and entries else None
+            if not isinstance(start_payload, dict):
+                return False, {"status": "FAIL", "reason": "trajectory ledger start payload missing"}
+            if not isinstance(terminal_payload, dict):
+                return False, {"status": "FAIL", "reason": "trajectory ledger terminal payload missing"}
+
+            expected_agent_view = sha256_json(asdict(task.agent_view()))
+            expected_host_task = _host_task_commitment(task)
+            if start_payload.get("agent_task_view_sha256") != expected_agent_view:
+                return False, {"status": "FAIL", "reason": "trajectory ledger agent task commitment mismatch"}
+            if start_payload.get("host_task_commitment") != expected_host_task:
+                return False, {"status": "FAIL", "reason": "trajectory ledger host task commitment mismatch"}
+
+            expected_frontier = observation_frontier_sha256(
+                [item.to_dict() for item in observations]
+            )
+            if terminal_payload.get("observation_frontier_sha256") != expected_frontier:
+                return False, {"status": "FAIL", "reason": "trajectory ledger observation frontier mismatch"}
+            if terminal_payload.get("semantic_valid") != bool(semantic_valid):
+                return False, {"status": "FAIL", "reason": "trajectory ledger semantic receipt mismatch"}
+            if (
+                provenance_valid is not None
+                and terminal_payload.get("provenance_valid") != bool(provenance_valid)
+            ):
+                return False, {"status": "FAIL", "reason": "trajectory ledger provenance receipt mismatch"}
+            ledger_valid_for_bundle = True
+
         with tempfile.TemporaryDirectory(prefix="proof-gym-") as tmp:
             root = Path(tmp) / "episode"
             root.mkdir()
+            agent_task_view = asdict(task.agent_view())
             trajectory = {
                 "format": "proof-gym-trajectory-v2",
                 "task_id": task.task_id,
@@ -273,13 +311,18 @@ class ProofBundleVerifier:
                 "format": "proof-gym-admission-v2",
                 "task_id": task.task_id,
                 "semantic_valid": semantic_valid,
+                "host_task_commitment": _host_task_commitment(task),
             }
+            if provenance_valid is not None:
+                admission["provenance_valid"] = provenance_valid
             files = {
+                "agent_task_view.json": canonical_json_bytes(agent_task_view),
                 "trajectory.json": canonical_json_bytes(trajectory),
             }
             if ledger_document is not None:
                 ledger_bytes = canonical_json_bytes(ledger_document)
                 files["ledger.json"] = ledger_bytes
+                admission["trajectory_valid"] = ledger_valid_for_bundle
                 admission["trajectory_ledger_sha256"] = hashlib.sha256(ledger_bytes).hexdigest()
                 admission["trajectory_ledger_root_sha256"] = ledger_document.get("root_sha256")
             files["admission.json"] = canonical_json_bytes(admission)
@@ -348,6 +391,7 @@ class ReferenceGym:
             done = False
             budget_exhausted = False
             terminal_reason: TerminalReason | None = None
+            terminal_cause_decision_hash: str | None = None
             steps_taken = 0
 
             ledger = TrajectoryLedger(
@@ -388,21 +432,25 @@ class ReferenceGym:
                     if action is None or action not in agent_task.allowed_actions:
                         trajectory.append("DEFER_NO_ADMISSIBLE")
                         terminal_reason = TerminalReason.INVALID_POLICY_ACTION
+                        terminal_cause_decision_hash = decision_entry.entry_hash
                         break
                 elif decision.kind is DecisionKind.CALL_GENERATIVE:
                     action = "CALL_GENERATIVE"
                     if action not in agent_task.allowed_actions:
                         trajectory.append("DEFER_NO_SUPPORT")
                         terminal_reason = TerminalReason.ACTION_UNSUPPORTED
+                        terminal_cause_decision_hash = decision_entry.entry_hash
                         break
                     if generator is None:
                         trajectory.append("DEFER_NO_SUPPORT")
                         terminal_reason = TerminalReason.GENERATOR_UNAVAILABLE
+                        terminal_cause_decision_hash = decision_entry.entry_hash
                         break
                     if generative_calls >= max_generative:
                         budget_exhausted = True
                         trajectory.append("BUDGET_EXHAUSTED")
                         terminal_reason = TerminalReason.GENERATIVE_BUDGET_EXHAUSTED
+                        terminal_cause_decision_hash = decision_entry.entry_hash
                         break
                     generative_calls += 1
                     candidate = generator.generate(agent_task, tuple(observations), generative_calls)
@@ -415,6 +463,7 @@ class ReferenceGym:
                 except (KeyError, ValueError):
                     trajectory.append("DEFER_NO_ADMISSIBLE")
                     terminal_reason = TerminalReason.INVALID_POLICY_ACTION
+                    terminal_cause_decision_hash = decision_entry.entry_hash
                     break
 
                 trajectory.append(action)
@@ -453,6 +502,7 @@ class ReferenceGym:
                 provenance_valid=provenance_valid,
                 budget_exhausted=budget_exhausted,
                 observations=[item.to_dict() for item in observations],
+                caused_by_decision_entry_hash=terminal_cause_decision_hash,
             )
             trajectory_valid, trajectory_reason = ledger.verify()
             ledger_document = ledger.to_document()
@@ -461,6 +511,7 @@ class ReferenceGym:
                 task,
                 tuple(observations),
                 semantic_valid,
+                provenance_valid=provenance_valid,
                 ledger_document=ledger_document,
             )
             admitted = semantic_valid and provenance_valid and trajectory_valid and integrity_valid

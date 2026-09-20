@@ -119,11 +119,74 @@ class GymG2Tests(unittest.TestCase):
             task,
             result.observations,
             semantic_valid=True,
+            provenance_valid=True,
             ledger_document=tampered,
         )
         self.assertFalse(valid)
         self.assertEqual(report["status"], "FAIL")
         self.assertIn("trajectory ledger rejected", report["reason"])
+
+    def test_ledger_cannot_be_replayed_against_another_host_task(self):
+        source_task = load_task(GYM_ROOT / "tasks" / "validation" / "vg_d2.json")
+        other_task = load_task(GYM_ROOT / "tasks" / "train" / "tg_a7.json")
+        result = ReferenceGym(create_environment).run(source_task, self.policy)
+
+        valid, report = ProofBundleVerifier().verify(
+            other_task,
+            result.observations,
+            semantic_valid=True,
+            provenance_valid=True,
+            ledger_document=ledger_document(result),
+        )
+        self.assertFalse(valid)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("commitment mismatch", report["reason"])
+
+    def test_ledger_must_match_proof_bundle_observation_frontier(self):
+        task = load_task(GYM_ROOT / "tasks" / "validation" / "vg_d2.json")
+        result = ReferenceGym(create_environment).run(task, self.policy)
+        reset_only = create_environment(task).reset()
+
+        valid, report = ProofBundleVerifier().verify(
+            task,
+            reset_only,
+            semantic_valid=True,
+            provenance_valid=True,
+            ledger_document=ledger_document(result),
+        )
+        self.assertFalse(valid)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("observation frontier mismatch", report["reason"])
+
+    def test_ledger_semantic_receipt_must_match_bundle_receipt(self):
+        task = load_task(GYM_ROOT / "tasks" / "validation" / "vg_d2.json")
+        result = ReferenceGym(create_environment).run(task, self.policy)
+
+        valid, report = ProofBundleVerifier().verify(
+            task,
+            result.observations,
+            semantic_valid=False,
+            provenance_valid=True,
+            ledger_document=ledger_document(result),
+        )
+        self.assertFalse(valid)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("semantic receipt mismatch", report["reason"])
+
+    def test_ledger_provenance_receipt_must_match_bundle_receipt(self):
+        task = load_task(GYM_ROOT / "tasks" / "validation" / "vg_d2.json")
+        result = ReferenceGym(create_environment).run(task, self.policy)
+
+        valid, report = ProofBundleVerifier().verify(
+            task,
+            result.observations,
+            semantic_valid=True,
+            provenance_valid=False,
+            ledger_document=ledger_document(result),
+        )
+        self.assertFalse(valid)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("provenance receipt mismatch", report["reason"])
 
     def test_step_budget_exhaustion_has_explicit_terminal_reason(self):
         task = load_task(GYM_ROOT / "tasks" / "train" / "tg_b3.json")
@@ -133,7 +196,7 @@ class GymG2Tests(unittest.TestCase):
         self.assertTrue(result.budget_exhausted)
         self.assertEqual(result.terminal_reason, TerminalReason.STEP_BUDGET_EXHAUSTED.value)
 
-    def test_generative_budget_exhaustion_has_explicit_terminal_reason(self):
+    def test_generative_budget_exhaustion_has_explicit_terminal_reason_and_decision_cause(self):
         task = load_task(GYM_ROOT / "tasks" / "validation" / "vg_e4.json")
         task = replace(task, budget={**task.budget, "max_generative_calls": 1})
         result = ReferenceGym(create_environment).run(task, self.policy, generator=self.generator)
@@ -144,6 +207,20 @@ class GymG2Tests(unittest.TestCase):
             result.terminal_reason,
             TerminalReason.GENERATIVE_BUDGET_EXHAUSTED.value,
         )
+
+        document = ledger_document(result)
+        terminal = document["entries"][-1]
+        preceding_decision = next(
+            entry
+            for entry in reversed(document["entries"][:-1])
+            if entry["kind"] == "DECISION"
+        )
+        self.assertEqual(
+            terminal["payload"]["caused_by_decision_entry_hash"],
+            preceding_decision["entry_hash"],
+        )
+        valid, reason = verify_ledger_document(document)
+        self.assertTrue(valid, reason)
 
     def test_tool_budget_exhaustion_has_explicit_terminal_reason(self):
         task = load_task(GYM_ROOT / "tasks" / "train" / "tg_a7.json")
