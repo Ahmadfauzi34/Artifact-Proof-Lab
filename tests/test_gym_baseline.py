@@ -61,6 +61,31 @@ class GymBaselineTests(unittest.TestCase):
         candidate_evidence = [o for o in result.observations if o.check_id == "generated-candidate"]
         self.assertEqual([o.status for o in candidate_evidence], ["FAIL", "PASS"])
 
+    def test_environment_reset_is_deterministic(self):
+        task = load_task(GYM_ROOT / "tasks" / "train" / "tg_a7.json")
+        first = create_environment(task).reset()
+        second = create_environment(task).reset()
+        self.assertEqual(first, second)
+
+    def test_wrong_action_can_recover_without_provenance_aliasing(self):
+        task = load_task(GYM_ROOT / "tasks" / "train" / "tg_c9.json")
+
+        class WrongFirstPolicy:
+            def decide(self, task, observations, trajectory):
+                if not trajectory:
+                    from gym.core import PolicyDecision
+                    return PolicyDecision.select("APPLY_CANDIDATE_FIX")
+                return ReferencePolicy().decide(task, observations, trajectory)
+
+        result = self.gym.run(task, WrongFirstPolicy(), generator=self.generator)
+        self.assertTrue(result.accepted, result.admission.reason)
+        patch_attempts = [o.attempt_id for o in result.observations if o.check_id == "patch"]
+        self.assertEqual(patch_attempts, [1, 2])
+        self.assertEqual(
+            result.trajectory,
+            ("APPLY_CANDIDATE_FIX", "RUN_TARGETED_TEST", "APPLY_CANDIDATE_FIX", "RUN_REGRESSION"),
+        )
+
     def test_all_reference_tasks_keep_split_metrics_separable(self):
         rows = []
         for task in load_tasks(GYM_ROOT / "tasks"):

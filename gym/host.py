@@ -16,6 +16,7 @@ class _BaseEnvironment:
         self._sequence = 0
         self._tick = 0
         self._semantic_valid = False
+        self._attempt_counters: dict[str, int] = {}
         self._tmp = tempfile.TemporaryDirectory(prefix=f"gym-{task.domain}-")
         self.root = Path(self._tmp.name)
 
@@ -37,6 +38,10 @@ class _BaseEnvironment:
         cost: float = 0.0,
         raw_payload_ref: str | None = None,
     ) -> Observation:
+        previous_attempt = self._attempt_counters.get(check_id, 0)
+        if attempt_id <= previous_attempt:
+            raise ValueError(f"attempt_id must increase for {check_id}: {attempt_id} <= {previous_attempt}")
+        self._attempt_counters[check_id] = attempt_id
         item = Observation(
             observation_id=f"obs-{self.task.task_id}-{self._sequence:04d}",
             source_lineage_root=f"lineage-{self.task.environment['snapshot_id']}",
@@ -54,6 +59,9 @@ class _BaseEnvironment:
         self._sequence += 1
         self._tick += 1
         return item
+
+    def _next_attempt(self, check_id: str) -> int:
+        return self._attempt_counters.get(check_id, 0) + 1
 
     def semantic_verdict(self) -> bool:
         return self._semantic_valid
@@ -90,7 +98,7 @@ class CliProcessEnvironment(_BaseEnvironment):
             self._semantic_valid = running
             return StepOutcome((obs,), done=running)
         if action == "RETRY_HEALTHCHECK":
-            obs = self._obs(check_id="health", probe_id="health", attempt_id=3, observation_type="healthcheck", status="PASS", value="ok", cost=0.2)
+            obs = self._obs(check_id="health", probe_id="health", attempt_id=self._next_attempt("health"), observation_type="healthcheck", status="PASS", value="ok", cost=0.2)
             return StepOutcome((obs,), done=False)
         if action == "RESTART_PROCESS":
             obs = self._obs(check_id="restart", probe_id="restart", attempt_id=1, observation_type="mutation", status="WARN", value="destructive-repair-without-proof", cost=1.0)
@@ -175,7 +183,7 @@ class RepositoryCodingEnvironment(_BaseEnvironment):
             self._obs(check_id="historical-regression", probe_id="history", attempt_id=1, observation_type="claim", status="FAIL", value="clamp edge cases previously failed"),
         )
 
-    def _run_test(self, check_id: str, attempt: int) -> Observation:
+    def _run_test(self, check_id: str) -> Observation:
         completed = subprocess.run(
             [sys.executable, "-B", str(self.test)],
             cwd=self.root,
@@ -187,7 +195,7 @@ class RepositoryCodingEnvironment(_BaseEnvironment):
         return self._obs(
             check_id=check_id,
             probe_id="unittest",
-            attempt_id=attempt,
+            attempt_id=self._next_attempt(check_id),
             observation_type="execution",
             status="PASS" if passed else "FAIL",
             value={"returncode": completed.returncode},
@@ -197,25 +205,25 @@ class RepositoryCodingEnvironment(_BaseEnvironment):
 
     def step(self, action: str, *, candidate: str | None = None) -> StepOutcome:
         if action == "RUN_TARGETED_TEST":
-            obs = self._run_test("targeted-test", 1)
+            obs = self._run_test("targeted-test")
             self._failed_once = obs.status == "FAIL"
             return StepOutcome((obs,), done=False)
         if action == "APPLY_CANDIDATE_FIX":
             if not self._failed_once:
-                obs = self._obs(check_id="patch", probe_id="patch", attempt_id=1, observation_type="mutation", status="FAIL", value="patch-before-execution-evidence", cost=0.25)
+                obs = self._obs(check_id="patch", probe_id="patch", attempt_id=self._next_attempt("patch"), observation_type="mutation", status="FAIL", value="patch-before-execution-evidence", cost=0.25)
                 return StepOutcome((obs,), done=False)
             self.module.write_text("def clamp(x, lo, hi):\n    return max(lo, min(x, hi))\n")
             self._patched = True
-            obs = self._obs(check_id="patch", probe_id="patch", attempt_id=1, observation_type="mutation", status="PASS", value="candidate-applied", cost=0.25, raw_payload_ref="calc.py")
+            obs = self._obs(check_id="patch", probe_id="patch", attempt_id=self._next_attempt("patch"), observation_type="mutation", status="PASS", value="candidate-applied", cost=0.25, raw_payload_ref="calc.py")
             return StepOutcome((obs,), done=False)
         if action == "RUN_REGRESSION":
-            obs = self._run_test("regression", 1)
+            obs = self._run_test("regression")
             self._semantic_valid = self._patched and obs.status == "PASS"
             return StepOutcome((obs,), done=True)
         if action == "ROLLBACK":
             self.module.write_text("def clamp(x, lo, hi):\n    return min(lo, max(x, hi))\n")
             self._patched = False
-            obs = self._obs(check_id="rollback", probe_id="rollback", attempt_id=1, observation_type="mutation", status="PASS", value="rolled-back", cost=0.25)
+            obs = self._obs(check_id="rollback", probe_id="rollback", attempt_id=self._next_attempt("rollback"), observation_type="mutation", status="PASS", value="rolled-back", cost=0.25)
             return StepOutcome((obs,), done=False)
         if action.startswith("DEFER_") or action == "DEFER":
             obs = self._obs(check_id="defer", probe_id="defer", attempt_id=1, observation_type="decision", status="FAIL", value=action)
