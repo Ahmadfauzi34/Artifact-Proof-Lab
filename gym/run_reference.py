@@ -11,7 +11,7 @@ from .reference_policy import ReferenceGenerator, ReferencePolicy
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the Proof-Gated Adaptive Agent Gym reference policy")
+    parser = argparse.ArgumentParser(description="Run reference contract-conformance controller")
     parser.add_argument("--tasks", type=Path, default=Path(__file__).parent / "tasks")
     args = parser.parse_args(argv)
 
@@ -30,11 +30,14 @@ def main(argv: list[str] | None = None) -> int:
                 "accepted": result.accepted,
                 "learning_updated": result.learning_updated,
                 "generative_calls": result.generative_calls,
+                "budget_exhausted": result.budget_exhausted,
                 "trajectory": list(result.trajectory),
             }
         )
     summary = {
-        "format": "proof-gym-reference-run-v1",
+        "format": "proof-gym-reference-contract-run-v2",
+        "evaluation_scope": "reference_contract_conformance_only",
+        "native_competence_claim": False,
         "tasks": rows,
         "learning_updates": list(learning.updates),
         "split_metrics": {

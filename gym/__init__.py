@@ -2,6 +2,7 @@
 
 from .core import (
     AdmissionReceipt,
+    AgentTaskView,
     EpisodeResult,
     Observation,
     PolicyDecision,
@@ -11,6 +12,7 @@ from .core import (
 
 __all__ = [
     "AdmissionReceipt",
+    "AgentTaskView",
     "EpisodeResult",
     "Observation",
     "PolicyDecision",

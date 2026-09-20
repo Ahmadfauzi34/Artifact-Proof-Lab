@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 import hashlib
 import json
+import math
 from pathlib import Path
 import tempfile
 from typing import Any, Callable, Iterable, Mapping, Protocol
@@ -52,6 +53,23 @@ class Observation:
 
 
 @dataclass(frozen=True)
+class AgentTaskView:
+    """Only the task surface a policy/generator is allowed to observe.
+
+    Host-only split labels, skill targets, snapshot identifiers, runner identity,
+    and benchmark metadata intentionally do not cross this boundary.
+    """
+
+    task_id: str
+    domain: str
+    description: str
+    allowed_actions: tuple[str, ...]
+    budget: Mapping[str, Any]
+    public_tests: tuple[str, ...] = ()
+    public_inputs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class PublicTask:
     task_id: str
     domain: str
@@ -79,19 +97,16 @@ class PublicTask:
             metadata=dict(raw.get("metadata", {})),
         )
 
-    def agent_view(self) -> dict[str, Any]:
-        return {
-            "task_id": self.task_id,
-            "domain": self.domain,
-            "skill_targets": list(self.skill_targets),
-            "description": self.description,
-            "environment": dict(self.environment),
-            "allowed_actions": list(self.allowed_actions),
-            "budget": dict(self.budget),
-            "split": self.split,
-            "public_tests": list(self.public_tests),
-            "metadata": dict(self.metadata),
-        }
+    def agent_view(self) -> AgentTaskView:
+        return AgentTaskView(
+            task_id=self.task_id,
+            domain=self.domain,
+            description=self.description,
+            allowed_actions=self.allowed_actions,
+            budget=dict(self.budget),
+            public_tests=self.public_tests,
+            public_inputs=tuple(self.environment.get("public_inputs", ())),
+        )
 
 
 @dataclass(frozen=True)
@@ -110,14 +125,14 @@ class Environment(Protocol):
 class Policy(Protocol):
     def decide(
         self,
-        task: PublicTask,
+        task: AgentTaskView,
         observations: tuple[Observation, ...],
         trajectory: tuple[str, ...],
     ) -> PolicyDecision: ...
 
 
 class Generator(Protocol):
-    def generate(self, task: PublicTask, observations: tuple[Observation, ...], attempt: int) -> str: ...
+    def generate(self, task: AgentTaskView, observations: tuple[Observation, ...], attempt: int) -> str: ...
 
 
 class LearningSink(Protocol):
@@ -145,6 +160,7 @@ class EpisodeResult:
     reward_channels: Mapping[str, float]
     learning_updated: bool
     generative_calls: int
+    budget_exhausted: bool = False
     generated_candidates: tuple[str, ...] = ()
 
     @property
@@ -175,17 +191,29 @@ class EvidenceAdmission:
         sequence = [item.sequence_index for item in items]
         if sequence != expected_sequence:
             return False, "non-contiguous sequence_index"
+        logical_ticks = [item.logical_tick for item in items]
+        if logical_ticks != sorted(logical_ticks) or len(logical_ticks) != len(set(logical_ticks)):
+            return False, "logical_tick must be strictly monotonic"
         if any(not item.source_lineage_root or not item.check_id or not item.probe_id for item in items):
             return False, "missing provenance identity"
-        by_check: dict[str, list[Observation]] = {}
+        if any(not math.isfinite(float(item.cost)) or item.cost < 0 for item in items):
+            return False, "invalid observation cost"
+
+        check_identity: dict[str, tuple[str, str]] = {}
+        by_identity: dict[tuple[str, str, str], list[Observation]] = {}
         for item in items:
-            by_check.setdefault(item.check_id, []).append(item)
-        for check_items in by_check.values():
+            identity = (item.source_lineage_root, item.probe_id)
+            previous = check_identity.setdefault(item.check_id, identity)
+            if previous != identity:
+                return False, "check_id aliases multiple source/probe identities"
+            by_identity.setdefault((item.source_lineage_root, item.check_id, item.probe_id), []).append(item)
+
+        for check_items in by_identity.values():
             attempts = [item.attempt_id for item in check_items]
             if attempts != sorted(attempts):
-                return False, "attempt_id moved backwards within a check trajectory"
+                return False, "attempt_id moved backwards within an evidence identity"
             if len(set(attempts)) != len(attempts):
-                return False, "attempt_id repeated within a check trajectory"
+                return False, "attempt_id repeated within an evidence identity"
         return True, "provenance accepted"
 
 
@@ -201,11 +229,11 @@ class ProofBundleVerifier:
     def verify(self, task: PublicTask, observations: tuple[Observation, ...], semantic_valid: bool) -> tuple[bool, Mapping[str, Any] | None]:
         try:
             from artifact_proof import verify_artifact
-        except ImportError:
-            # Useful for consuming the gym as a standalone reference package.
-            # In Artifact-Proof-Lab itself, the import is present and tests
-            # exercise the real verifier.
-            return True, {"status": "SKIP", "reason": "artifact_proof import unavailable"}
+        except ImportError as exc:
+            # Missing proof authority is a hard boundary failure. A standalone
+            # consumer may still run the environment, but cannot obtain proof
+            # closure or learning credit without the real verifier.
+            return False, {"status": "FAIL", "reason": f"artifact_proof import unavailable: {exc}"}
 
         with tempfile.TemporaryDirectory(prefix="proof-gym-") as tmp:
             root = Path(tmp) / "episode"
@@ -265,6 +293,7 @@ class ReferenceGym:
         learning_sink: LearningSink | None = None,
     ) -> EpisodeResult:
         env = self._environment_factory(task)
+        agent_task = task.agent_view()
         observations = list(env.reset())
         trajectory: list[str] = []
         generated_candidates: list[str] = []
@@ -272,10 +301,17 @@ class ReferenceGym:
         max_steps = int(task.budget["max_steps"])
         max_generative = task.budget.get("max_generative_calls")
         max_generative = 0 if max_generative is None else int(max_generative)
+        max_tool_cost = task.budget.get("max_tool_cost")
+        max_tool_cost = None if max_tool_cost is None else float(max_tool_cost)
         done = False
+        budget_exhausted = False
 
-        for _step in range(max_steps):
-            decision = policy.decide(task, tuple(observations), tuple(trajectory))
+        if max_tool_cost is not None and sum(item.cost for item in observations) > max_tool_cost:
+            budget_exhausted = True
+            trajectory.append("BUDGET_EXHAUSTED")
+
+        for _step in range(max_steps if not budget_exhausted else 0):
+            decision = policy.decide(agent_task, tuple(observations), tuple(trajectory))
             if decision.kind is DecisionKind.SELECT:
                 action = decision.action
                 if action is None or action not in task.allowed_actions:
@@ -284,30 +320,34 @@ class ReferenceGym:
                 trajectory.append(action)
                 outcome = env.step(action)
             elif decision.kind is DecisionKind.CALL_GENERATIVE:
-                if generator is None or generative_calls >= max_generative:
+                if "CALL_GENERATIVE" not in task.allowed_actions or generator is None or generative_calls >= max_generative:
                     trajectory.append("DEFER_NO_SUPPORT")
                     break
                 generative_calls += 1
-                candidate = generator.generate(task, tuple(observations), generative_calls)
+                candidate = generator.generate(agent_task, tuple(observations), generative_calls)
                 generated_candidates.append(candidate)
                 trajectory.append("CALL_GENERATIVE")
                 outcome = env.step("CALL_GENERATIVE", candidate=candidate)
             else:
                 trajectory.append(decision.kind.value)
-                # A defer is itself a terminal bounded action. The environment
-                # can admit a safe-defer scenario or reject an unsupported one.
                 outcome = env.step(decision.kind.value)
 
             observations.extend(outcome.observations)
+            if max_tool_cost is not None and sum(item.cost for item in observations) > max_tool_cost:
+                budget_exhausted = True
+                trajectory.append("BUDGET_EXHAUSTED")
+                break
             if outcome.done:
                 done = True
                 break
 
-        semantic_valid = bool(done and env.semantic_verdict())
+        semantic_valid = bool(done and not budget_exhausted and env.semantic_verdict())
         provenance_valid, provenance_reason = EvidenceAdmission.provenance_valid(observations)
         integrity_valid, proof_report = self._proof_verifier.verify(task, tuple(observations), semantic_valid)
         admitted = semantic_valid and provenance_valid and integrity_valid
-        if not semantic_valid:
+        if budget_exhausted:
+            reason = "tool-cost budget exhausted"
+        elif not semantic_valid:
             reason = "semantic evaluator rejected trajectory"
         elif not provenance_valid:
             reason = provenance_reason
@@ -325,8 +365,9 @@ class ReferenceGym:
         )
 
         rewards = {
-            "task_acceptance": 1.0 if admitted else 0.0,
-            "proof_closure": 1.0 if semantic_valid else 0.0,
+            "task_acceptance": 1.0 if semantic_valid else 0.0,
+            "proof_closure": 1.0 if provenance_valid and integrity_valid else 0.0,
+            "admission_credit": 1.0 if admitted else 0.0,
             "resource_cost": -sum(item.cost for item in observations),
             "useless_retry_penalty": -float(_count_useless_retries(observations)),
             "defer_quality": 1.0 if admitted and any(step.startswith("DEFER_") for step in trajectory) else 0.0,
@@ -341,10 +382,10 @@ class ReferenceGym:
             reward_channels=rewards,
             learning_updated=False,
             generative_calls=generative_calls,
+            budget_exhausted=budget_exhausted,
             generated_candidates=tuple(generated_candidates),
         )
         learning_updated = False
-        # Only admitted training evidence may change the writable brain.
         if admitted and task.split == "train" and learning_sink is not None:
             learning_sink.update(provisional)
             learning_updated = True
@@ -352,11 +393,11 @@ class ReferenceGym:
 
 
 def _count_useless_retries(observations: Iterable[Observation]) -> int:
-    by_check: dict[str, list[Observation]] = {}
+    by_identity: dict[tuple[str, str, str], list[Observation]] = {}
     for item in observations:
-        by_check.setdefault(item.check_id, []).append(item)
+        by_identity.setdefault((item.source_lineage_root, item.check_id, item.probe_id), []).append(item)
     useless = 0
-    for items in by_check.values():
+    for items in by_identity.values():
         if len(items) < 2:
             continue
         for previous, current in zip(items, items[1:]):

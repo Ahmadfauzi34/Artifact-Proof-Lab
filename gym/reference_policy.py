@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .core import DecisionKind, Observation, PolicyDecision, PublicTask
+from .core import AgentTaskView, DecisionKind, Observation, PolicyDecision
 
 
 class ReferencePolicy:
@@ -13,7 +13,7 @@ class ReferencePolicy:
 
     def decide(
         self,
-        task: PublicTask,
+        task: AgentTaskView,
         observations: tuple[Observation, ...],
         trajectory: tuple[str, ...],
     ) -> PolicyDecision:
@@ -30,6 +30,13 @@ class ReferencePolicy:
                 return PolicyDecision.select("CHECK_PROVENANCE", "independent probes disagree; inspect source authority")
             if isinstance(provenance.value, dict) and provenance.value.get("source_a") == "signed":
                 return PolicyDecision.select("SELECT_SOURCE_A", "select the source supported by admitted provenance")
+
+        if "INSPECT_CONFIG_ORIGIN" in actions:
+            origin = next((item for item in observations if item.check_id == "config-origin"), None)
+            if origin is None:
+                return PolicyDecision.select("INSPECT_CONFIG_ORIGIN", "configuration values conflict; inspect source origin")
+            if isinstance(origin.value, dict) and origin.value.get("project") == "signed":
+                return PolicyDecision.select("SELECT_PROJECT_CONFIG", "choose the configuration with signed origin")
 
         if "RUN_TARGETED_TEST" in actions:
             targeted = next((item for item in observations if item.check_id == "targeted-test"), None)
@@ -52,9 +59,13 @@ class ReferencePolicy:
 
 
 class ReferenceGenerator:
-    """Deterministic test generator used only to exercise the fallback boundary."""
+    """Reference-only generator used to test reject-before-accept behavior.
 
-    def generate(self, task: PublicTask, observations: tuple[Observation, ...], attempt: int) -> str:
+    Its outputs are known to the reference host and are never evidence of native
+    synthesis competence.
+    """
+
+    def generate(self, task: AgentTaskView, observations: tuple[Observation, ...], attempt: int) -> str:
         # The first candidate is intentionally wrong so hidden validation proves
         # that generation is candidate-only. The second is a valid candidate.
         return "key=guess" if attempt == 1 else "key=stable-42"

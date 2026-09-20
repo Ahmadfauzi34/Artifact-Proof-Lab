@@ -1,10 +1,11 @@
 {
   "task_id": "hg_f8",
-  "domain": "structured_data",
+  "domain": "filesystem_config",
   "skill_targets": ["perception", "decision", "proof", "conflicting_evidence"],
-  "description": "Independent observations disagree. Resolve authority through provenance and keep this holdout trajectory read-only with respect to learning.",
-  "environment": {"snapshot_id": "sd-f8", "runner": "reference-v1", "public_inputs": []},
-  "allowed_actions": ["CHECK_PROVENANCE", "SELECT_SOURCE_A", "SELECT_SOURCE_B", "DEFER"],
+  "description": "Two configuration sources disagree. Resolve which configuration can be admitted using the available evidence.",
+  "environment": {"snapshot_id": "env-d13f6e", "runner": "reference-v1", "public_inputs": []},
+  "allowed_actions": ["INSPECT_CONFIG_ORIGIN", "SELECT_PROJECT_CONFIG", "SELECT_CACHE_CONFIG", "DEFER"],
   "budget": {"max_steps": 3, "max_tool_cost": 3.0, "max_generative_calls": 0},
-  "split": "holdout"
+  "split": "holdout",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false}
 }

@@ -1,69 +1,97 @@
-# Proof-Gated Adaptive Agent Gym — Reference G1
+# Proof-Gated Adaptive Agent Gym — Hardened Reference G1
 
 This directory is an additive training/evaluation surface for Artifact-Proof-Lab.
-It does **not** change proof-core semantics and it does not claim a trained agent.
+It does not change proof-core semantics and it does not claim a trained agent.
 
-The reference loop is:
+Reference loop:
 
-```text
-Public task
-  -> deterministic reset
-  -> observations with identity + provenance
-  -> typed policy decision
-  -> real environment action
-  -> new evidence
-  -> host semantic evaluator
-  -> provenance admission
-  -> Artifact-Proof-Lab integrity bundle
-  -> learning update (train split only, admitted evidence only)
-```
+    host task descriptor
+      -> sanitized AgentTaskView
+      -> deterministic reset
+      -> observations with identity + provenance
+      -> typed policy decision
+      -> real environment action
+      -> new evidence
+      -> host semantic evaluator
+      -> provenance admission
+      -> Artifact-Proof-Lab integrity bundle
+      -> learning update (train split only, admitted evidence only)
 
 Hard boundaries:
 
-```text
-reward != truth
-policy choice != truth
-generated candidate != proof
-integrity proof != semantic correctness
-learning update only after admitted evidence
-validation/holdout never update the writable training sink
-```
+    reward != truth
+    policy choice != truth
+    generated candidate != proof
+    integrity proof != semantic correctness
+    semantic task success != proof closure
+    learning update only after admitted evidence
+    validation/holdout never update the writable training sink
+    missing proof verifier = FAIL_CLOSED
+
+## Public agent surface vs host surface
+
+Policies and generators receive AgentTaskView, not PublicTask. The agent view
+deliberately excludes split labels, skill targets, host snapshot/runner identity,
+and benchmark metadata.
+
+Host snapshot IDs are opaque env-hex identifiers and are resolved only by the
+reference host registry. The ID itself does not encode the environment family.
+
+The JSON files under gym/tasks are host descriptors for reproducible reference
+contract tests. They are intentionally committed to the repository, so they are
+not a native-competence benchmark. Every bundled descriptor is marked as
+reference_contract with native_competence_claim=false.
+
+For native or private holdout evaluation, stage only the sanitized agent view in
+the agent workspace and mount host snapshots/evaluators outside that workspace.
 
 ## Reference machine, not restriction
 
-The included environments are a reproducible standard-library reference. They are
-not a ban on other runtimes, models, planners, RL implementations, or domain
-adapters. A new adapter is compatible when it satisfies the same public task,
-observation, typed-decision, reset, and evidence-admission contracts.
+The included environments are a reproducible standard-library reference. They
+are not a ban on other runtimes, models, planners, RL implementations, or domain
+adapters. Compatible upgrades must preserve the task-view, observation,
+typed-decision, reset, evidence-admission, budget, and proof contracts.
 
 ## Domains in G1
 
-- `cli_process` — temporal retry evidence versus independent process inspection.
-- `structured_data` — conflicting independent measurements resolved by provenance.
-- `repository_coding` — run -> patch -> regression, with actual subprocess execution.
-- `capability_boundary` — safe typed defer when no action is supported.
-- `planning_workflow` — generative fallback where generated output remains candidate-only.
+- cli_process
+- structured_data
+- repository_coding
+- capability_boundary
+- planning_workflow
+- filesystem_config (reference holdout domain with different local vocabulary)
 
-The `conflicting_evidence` skill is intentionally exercised in multiple domains;
-domain vocabulary is not treated as the skill itself.
+The conflicting_evidence skill is intentionally exercised across domains; domain
+vocabulary is not treated as the skill itself.
+
+## Budget and evidence rules
+
+max_steps, max_generative_calls, and max_tool_cost are executable contracts.
+Exceeding tool cost terminates the episode as BUDGET_EXHAUSTED and cannot receive
+semantic acceptance or learning credit.
+
+A retry identity is bound to:
+
+    (source_lineage_root, check_id, probe_id)
+
+Reusing one check_id across a different source/probe identity is rejected as
+provenance aliasing. Independent probes remain independent evidence.
+
+## Reference score semantics
+
+gym.run_reference is a contract-conformance smoke controller, not the target
+agent. Its output explicitly sets evaluation_scope to
+reference_contract_conformance_only and native_competence_claim to false.
+
+Do not report reference-controller pass rate as agent capability.
 
 ## Run locally
 
-From repository root:
+    PYTHONPATH=src:. python -m gym.validate_baseline
+    PYTHONPATH=src:. python -m unittest discover -s tests -v
+    PYTHONPATH=src:. python -m gym.run_reference
 
-```bash
-PYTHONPATH=src:. python -m gym.validate_baseline
-PYTHONPATH=src:. python -m unittest discover -s tests -v
-PYTHONPATH=src:. python -m gym.run_reference
-```
+## Upgrade rule
 
-`gym.run_reference` is a smoke/reference controller, not the target agent. Replace
-`ReferencePolicy` with any policy implementing the typed interface.
-
-## Oracle separation
-
-Public JSON task files contain no expected action, reference patch, semantic
-label, or hidden validator detail. Host environment state is instantiated by an
-opaque `snapshot_id` and is not part of `PublicTask.agent_view()`. In a real
-holdout deployment, host snapshots/evaluators should be mounted outside the
-agent workspace; this repository provides the contract and reference host.
+Future gym upgrades should preserve gym/BASELINE_CONTRACT.md unless a later
+checkpoint explicitly replaces an invariant with a stricter contract.

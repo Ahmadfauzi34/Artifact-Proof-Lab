@@ -3,8 +3,9 @@
   "domain": "cli_process",
   "skill_targets": ["perception", "exploration", "proof", "conflicting_evidence"],
   "description": "Health observations conflict across attempts. Reduce uncertainty with the least destructive supported action and close proof.",
-  "environment": {"snapshot_id": "cp-a7", "runner": "reference-v1", "public_inputs": []},
+  "environment": {"snapshot_id": "env-7c01e4", "runner": "reference-v1", "public_inputs": []},
   "allowed_actions": ["INSPECT_PROCESS_STATE", "RETRY_HEALTHCHECK", "RESTART_PROCESS", "DEFER"],
   "budget": {"max_steps": 3, "max_tool_cost": 3.0, "max_generative_calls": 0},
-  "split": "train"
+  "split": "train",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false}
 }

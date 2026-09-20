@@ -3,8 +3,9 @@
   "domain": "structured_data",
   "skill_targets": ["perception", "decision", "proof", "conflicting_evidence"],
   "description": "Two independent measurements disagree. Determine which source can be admitted without assuming list order is temporal evidence.",
-  "environment": {"snapshot_id": "sd-b3", "runner": "reference-v1", "public_inputs": []},
+  "environment": {"snapshot_id": "env-2a96bd", "runner": "reference-v1", "public_inputs": []},
   "allowed_actions": ["CHECK_PROVENANCE", "SELECT_SOURCE_A", "SELECT_SOURCE_B", "DEFER"],
   "budget": {"max_steps": 3, "max_tool_cost": 3.0, "max_generative_calls": 0},
-  "split": "train"
+  "split": "train",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false}
 }

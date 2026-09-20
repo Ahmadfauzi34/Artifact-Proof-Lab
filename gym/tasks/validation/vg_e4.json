@@ -2,9 +2,10 @@
   "task_id": "vg_e4",
   "domain": "planning_workflow",
   "skill_targets": ["synthesis", "planning", "proof"],
-  "description": "The bounded action set cannot synthesize the missing key. Use generative cognition as a candidate source, then rely on validation rather than confidence.",
-  "environment": {"snapshot_id": "gf-e4", "runner": "reference-v1", "public_inputs": []},
+  "description": "A required configuration value is missing and no bounded action can construct it. Resolve the task within the available action and call budgets.",
+  "environment": {"snapshot_id": "env-b82d10", "runner": "reference-v1", "public_inputs": []},
   "allowed_actions": ["CALL_GENERATIVE", "DEFER"],
   "budget": {"max_steps": 3, "max_tool_cost": 3.0, "max_generative_calls": 2},
-  "split": "validation"
+  "split": "validation",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false}
 }

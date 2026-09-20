@@ -16,7 +16,7 @@ class _BaseEnvironment:
         self._sequence = 0
         self._tick = 0
         self._semantic_valid = False
-        self._attempt_counters: dict[str, int] = {}
+        self._attempt_counters: dict[tuple[str, str], int] = {}
         self._tmp = tempfile.TemporaryDirectory(prefix=f"gym-{task.domain}-")
         self.root = Path(self._tmp.name)
 
@@ -38,10 +38,13 @@ class _BaseEnvironment:
         cost: float = 0.0,
         raw_payload_ref: str | None = None,
     ) -> Observation:
-        previous_attempt = self._attempt_counters.get(check_id, 0)
+        identity = (check_id, probe_id)
+        previous_attempt = self._attempt_counters.get(identity, 0)
         if attempt_id <= previous_attempt:
-            raise ValueError(f"attempt_id must increase for {check_id}: {attempt_id} <= {previous_attempt}")
-        self._attempt_counters[check_id] = attempt_id
+            raise ValueError(
+                f"attempt_id must increase for {check_id}/{probe_id}: {attempt_id} <= {previous_attempt}"
+            )
+        self._attempt_counters[identity] = attempt_id
         item = Observation(
             observation_id=f"obs-{self.task.task_id}-{self._sequence:04d}",
             source_lineage_root=f"lineage-{self.task.environment['snapshot_id']}",
@@ -60,8 +63,9 @@ class _BaseEnvironment:
         self._tick += 1
         return item
 
-    def _next_attempt(self, check_id: str) -> int:
-        return self._attempt_counters.get(check_id, 0) + 1
+    def _next_attempt(self, check_id: str, probe_id: str | None = None) -> int:
+        probe = probe_id or check_id
+        return self._attempt_counters.get((check_id, probe), 0) + 1
 
     def semantic_verdict(self) -> bool:
         return self._semantic_valid
@@ -157,6 +161,54 @@ class StructuredDataEnvironment(_BaseEnvironment):
         raise ValueError(f"unsupported data action: {action}")
 
 
+class FilesystemConfigEnvironment(_BaseEnvironment):
+    """Reference holdout domain with different local vocabulary from train."""
+
+    def __init__(self, task: PublicTask) -> None:
+        super().__init__(task)
+        self._origin_checked = False
+        (self.root / "origin.json").write_text(json.dumps({"project": "signed", "cache": "unanchored"}))
+
+    def reset(self) -> tuple[Observation, ...]:
+        return (
+            self._obs(check_id="project-config", probe_id="config-reader-project", attempt_id=1, observation_type="configuration", status="PASS", value={"timeout": 30}),
+            self._obs(check_id="cache-config", probe_id="config-reader-cache", attempt_id=1, observation_type="configuration", status="PASS", value={"timeout": 5}),
+        )
+
+    def step(self, action: str, *, candidate: str | None = None) -> StepOutcome:
+        if action == "INSPECT_CONFIG_ORIGIN":
+            data = json.loads((self.root / "origin.json").read_text())
+            self._origin_checked = True
+            obs = self._obs(
+                check_id="config-origin",
+                probe_id="origin-reader",
+                attempt_id=1,
+                observation_type="provenance",
+                status="PASS",
+                value=data,
+                cost=0.15,
+                raw_payload_ref="origin.json",
+            )
+            return StepOutcome((obs,), done=False)
+        if action in {"SELECT_PROJECT_CONFIG", "SELECT_CACHE_CONFIG"}:
+            valid = self._origin_checked and action == "SELECT_PROJECT_CONFIG"
+            self._semantic_valid = valid
+            obs = self._obs(
+                check_id="config-selection",
+                probe_id="config-selection",
+                attempt_id=1,
+                observation_type="decision",
+                status="PROOF_CLOSED" if valid else "FAIL",
+                value=action,
+                cost=0.05,
+            )
+            return StepOutcome((obs,), done=True)
+        if action.startswith("DEFER_") or action == "DEFER":
+            obs = self._obs(check_id="defer", probe_id="defer", attempt_id=1, observation_type="decision", status="FAIL", value=action)
+            return StepOutcome((obs,), done=True)
+        raise ValueError(f"unsupported config action: {action}")
+
+
 class RepositoryCodingEnvironment(_BaseEnvironment):
     """Run, mutate, and regress a tiny repository instead of predicting success."""
 
@@ -195,7 +247,7 @@ class RepositoryCodingEnvironment(_BaseEnvironment):
         return self._obs(
             check_id=check_id,
             probe_id="unittest",
-            attempt_id=self._next_attempt(check_id),
+            attempt_id=self._next_attempt(check_id, "unittest"),
             observation_type="execution",
             status="PASS" if passed else "FAIL",
             value={"returncode": completed.returncode},
@@ -278,19 +330,22 @@ class GenerativeFallbackEnvironment(_BaseEnvironment):
         return StepOutcome((obs,), done=valid, accepted_candidate=valid)
 
 
+_SNAPSHOT_FACTORIES = {
+    "env-7c01e4": CliProcessEnvironment,
+    "env-2a96bd": StructuredDataEnvironment,
+    "env-91f4c8": RepositoryCodingEnvironment,
+    "env-44ab73": SafeDeferEnvironment,
+    "env-b82d10": GenerativeFallbackEnvironment,
+    "env-d13f6e": FilesystemConfigEnvironment,
+}
+
+
 def create_environment(task: PublicTask):
     runner = str(task.environment.get("runner"))
     if runner != "reference-v1":
         raise ValueError(f"unsupported runner: {runner}")
     snapshot = str(task.environment.get("snapshot_id"))
-    if snapshot.startswith("cp-"):
-        return CliProcessEnvironment(task)
-    if snapshot.startswith("sd-"):
-        return StructuredDataEnvironment(task)
-    if snapshot.startswith("rc-"):
-        return RepositoryCodingEnvironment(task)
-    if snapshot.startswith("df-"):
-        return SafeDeferEnvironment(task)
-    if snapshot.startswith("gf-"):
-        return GenerativeFallbackEnvironment(task)
-    raise ValueError(f"unknown host snapshot: {snapshot}")
+    factory = _SNAPSHOT_FACTORIES.get(snapshot)
+    if factory is None:
+        raise ValueError(f"unknown host snapshot: {snapshot}")
+    return factory(task)
