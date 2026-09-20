@@ -8,14 +8,23 @@ from .core import (
     PolicyDecision,
     PublicTask,
     ReferenceGym,
+    TerminalReason,
 )
+from .host_boundary import HostGateway, HostSessionStart, LocalReferenceHost
+from .ledger import LedgerEntry, TrajectoryLedger
 
 __all__ = [
     "AdmissionReceipt",
     "AgentTaskView",
     "EpisodeResult",
+    "HostGateway",
+    "HostSessionStart",
+    "LedgerEntry",
+    "LocalReferenceHost",
     "Observation",
     "PolicyDecision",
     "PublicTask",
     "ReferenceGym",
+    "TerminalReason",
+    "TrajectoryLedger",
 ]
