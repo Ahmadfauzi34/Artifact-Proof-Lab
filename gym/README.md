@@ -103,6 +103,55 @@ therefore rejected rather than accepted as a replay.
 The ledger proves ordering and identity of the recorded trajectory. It does not
 decide whether an action was semantically correct.
 
+## G2.1 external private-host reference harness
+
+G2.1 adds a strict JSONL subprocess transport for exercising the G2 HostGateway
+across a real process boundary.
+
+Reference usage:
+
+    PYTHONPATH=src:. python -m gym.private_host_server --tasks gym/tasks
+
+A controller normally launches that server through:
+
+    SubprocessHostGateway([
+        sys.executable,
+        "-B",
+        "-m",
+        "gym.private_host_server",
+        "--tasks",
+        "gym/tasks",
+    ])
+
+The transport performs a versioned HELLO handshake and binds every response to a
+request_id. Frames are strict UTF-8 JSON, size bounded, reject non-finite JSON,
+and fail closed on malformed envelopes, unexpected fields, request-id mismatch,
+EOF, or timeout.
+
+START sends only task_id plus the host descriptor commitment. The response
+contains only:
+
+    session_id
+    sanitized AgentTaskView
+    observations
+    host_task_commitment
+
+It does not return split labels, skill targets, snapshot/runner identity,
+metadata, evaluator details, or oracle/reference answers.
+
+The reference server is intentionally inspectable and uses the bundled task
+registry, so it remains regression/protocol evidence only. For a real private
+holdout, place the server implementation, task registry, evaluator, snapshots,
+and host files outside the evaluated agent's readable workspace and authority.
+
+Subprocess stdio is a reference coordinate, not a transport restriction. A
+socket, RPC framework, container bridge, VM channel, or remote service may
+replace it while preserving the HostGateway, sanitization, identity, timeout,
+and proof contracts.
+
+See `gym/G21_CONTRACT.md` and
+`gym/contracts/host_wire_protocol.schema.json`.
+
 ## Reference machine, not restriction
 
 The included environments are a reproducible standard-library reference. They
@@ -169,9 +218,14 @@ Do not report reference-controller pass rate as agent capability.
     PYTHONPATH=src:. python -m gym.validate_baseline
     PYTHONPATH=src:. python -m unittest discover -s tests -v
     PYTHONPATH=src:. python -m gym.run_reference
+    PYTHONPATH=src:. python -m gym.run_subprocess_reference
+
+The last command runs the same reference fixtures through a separate host
+process and the G2.1 JSONL protocol. It remains reference contract conformance,
+not native competence evidence.
 
 ## Upgrade rule
 
 Future gym upgrades should preserve gym/BASELINE_CONTRACT.md unless a later
-checkpoint explicitly replaces an invariant with a stricter contract. G2 is a
-strict superset; the G1 baseline file is intentionally unchanged.
+checkpoint explicitly replaces an invariant with a stricter contract. G2 and
+G2.1 are strict supersets; the G1 baseline file is intentionally unchanged.

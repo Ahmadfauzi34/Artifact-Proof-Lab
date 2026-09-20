@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 import hashlib
 import math
+import sys
 from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Protocol
@@ -577,7 +578,12 @@ class ReferenceGym:
                 learning_updated = True
             return replace(provisional, learning_updated=learning_updated)
         finally:
-            host.close(start.session_id)
+            primary_failure_active = sys.exc_info()[0] is not None
+            try:
+                host.close(start.session_id)
+            except Exception:
+                if not primary_failure_active:
+                    raise
 
 
 def _host_task_commitment(task: PublicTask) -> str:

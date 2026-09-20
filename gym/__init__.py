@@ -13,7 +13,13 @@ from .core import (
     TerminalReason,
 )
 from .host_boundary import HostGateway, HostSessionStart, LocalReferenceHost
+from .host_wire import (
+    HostProtocolClosed,
+    HostProtocolError,
+    HostProtocolTimeout,
+)
 from .ledger import LedgerEntry, TrajectoryLedger
+from .subprocess_host import SubprocessHostGateway
 
 __all__ = [
     "AdmissionReceipt",
@@ -21,6 +27,9 @@ __all__ = [
     "EpisodeResult",
     "HostActionRejected",
     "HostGateway",
+    "HostProtocolClosed",
+    "HostProtocolError",
+    "HostProtocolTimeout",
     "HostSessionStart",
     "HostTaskDescriptor",
     "LedgerEntry",
@@ -29,6 +38,7 @@ __all__ = [
     "PolicyDecision",
     "PublicTask",
     "ReferenceGym",
+    "SubprocessHostGateway",
     "TerminalReason",
     "TrajectoryLedger",
 ]
