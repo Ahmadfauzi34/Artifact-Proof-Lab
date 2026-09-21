@@ -506,3 +506,43 @@ Future gym upgrades should preserve gym/BASELINE_CONTRACT.md unless a later
 checkpoint explicitly replaces an invariant with a stricter contract. G2,
 G2.1, G2.2, G2.3, G2.4, and G2.5 are strict supersets; the G1 baseline file is
 intentionally unchanged.
+
+
+## G4 actual adaptive policy training
+
+G4 introduces the first mutable policy state in the reference gym.
+
+ProofGatedAdaptivePolicy learns Q values over canonical semantic intents from
+fully admitted train EpisodeResults. It independently re-verifies each trajectory
+ledger before credit is applied.
+
+Training uses ReferencePolicy only as a demonstration source. The learner itself
+is used for post-training validation and holdout execution.
+
+The reference experiment measures:
+
+    untrained validation/holdout
+      -> admitted train demonstrations
+      -> Q/state update
+      -> learner-only validation
+      -> learner-only cross-domain holdout
+      -> policy hash unchanged during evaluation
+
+Local action vocabulary is not the learned policy identity. In particular,
+structured-data CHECK_PROVENANCE / SELECT_SOURCE_* and filesystem-config
+INSPECT_CONFIG_ORIGIN / SELECT_*_CONFIG share canonical authority intents.
+
+Reference command:
+
+    PYTHONPATH=src:. python -m gym.run_adaptive_training_reference
+
+The runner reports:
+
+    evaluation_scope=reference_adaptive_training_conformance_only
+    native_competence_claim=false
+    training_mode=proof_gated_teacher_demonstration_q
+    on_policy_exploration_claim=false
+    negative_experience_learning_claim=false
+
+This is real mutable policy learning, but it is not yet autonomous exploration or
+negative-outcome RL. See gym/G4_CONTRACT.md.

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/adaptive_policy.schema.json",
+  "title": "Proof-Gated Adaptive Policy State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "gamma", "states"],
+  "properties": {
+    "format": {
+      "const": "proof-gym-adaptive-policy-v1"
+    },
+    "gamma": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "states": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["visits", "value"],
+          "properties": {
+            "visits": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "value": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
