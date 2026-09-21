@@ -505,6 +505,15 @@ _SNAPSHOT_FACTORIES = {
     "env-44ab73": SafeDeferEnvironment,
     "env-b82d10": GenerativeFallbackEnvironment,
     "env-d13f6e": FilesystemConfigEnvironment,
+    "env-a1d4c2": CliProcessEnvironment,
+    "env-b2e6d3": StructuredDataEnvironment,
+    "env-c3f2a4": SafeDeferEnvironment,
+    "env-d4a5b6": GenerativeFallbackEnvironment,
+    "env-e5b8c7": RepositoryCodingEnvironment,
+    "env-f6a1d8": CliProcessEnvironment,
+    "env-a7f7e9": CliProcessEnvironment,
+    "env-b8c9f0": StructuredDataEnvironment,
+    "env-c9d3a1": RepositoryCodingEnvironment,
 }
 
 
