@@ -584,3 +584,51 @@ G4.1 therefore establishes teacher-free bounded on-policy search, not arbitrary
 unstructured exploration or negative-reward RL.
 
 See `gym/G41_CONTRACT.md`.
+
+
+## G4.2 typed negative experience
+
+G4.2 persists proof/integrity-valid semantic rejection as a separate negative
+preference state. Negative experience is not Q, truth, proof, or reward
+authority.
+
+Only terminal semantic rejection may update it:
+
+    train
+    semantic_valid=false
+    provenance_valid=true
+    trajectory_valid=true
+    integrity_valid=true
+    budget_exhausted=false
+    terminal_reason=ENVIRONMENT_DONE
+    ledger re-verifies
+
+Only the terminal-causing decision is recorded. Earlier correct steps in a
+failed episode are not penalized.
+
+NegativeAwareExplorationPolicy uses this state only when admitted positive Q has
+no unique supported preference. Among unresolved candidates, fewer typed
+rejections are preferred.
+
+Reference behavior:
+
+    9 positive learning receipts
+    7 typed negative receipts
+    16 total train attempts
+    11 positive learned pairs
+    validation 20% -> 100%
+    holdout 0% -> 100%
+
+A regression also proves cross-domain negative transfer with an empty positive-Q
+policy from structured-data authority rejection to filesystem-config action
+selection.
+
+Reference command:
+
+    PYTHONPATH=src:. python -m gym.run_negative_experience_training_reference
+
+Binary role:
+
+    proof-gym-runtime negative-train
+
+See `gym/G42_CONTRACT.md`.
