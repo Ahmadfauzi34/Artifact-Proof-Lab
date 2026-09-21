@@ -247,6 +247,8 @@ Reference command:
 
     PYTHONPATH=src:. python -m gym.run_private_pack_reference
     PYTHONPATH=src:. python -m gym.run_isolated_private_pack_reference
+    PYTHONPATH=src:. python -m gym.agent_socket_server --host 127.0.0.1 --port 8765
+    PYTHONPATH=src:. python -m gym.run_external_agent_reference --agent-host 127.0.0.1 --agent-port 8765
 
 The output explicitly reports
 `evaluation_scope=reference_private_pack_conformance_only` and
@@ -310,6 +312,57 @@ pack/evaluator/oracle except through the AgentEndpoint protocol.
 See `gym/G23_CONTRACT.md` and
 `gym/contracts/agent_wire_protocol.schema.json`.
 
+## G2.4 external agent harness
+
+G2.4 removes evaluated-agent process launch from the trusted controller path.
+
+The controller now supports `ExternalAgentEndpoint(host, port)`, which connects
+to a **pre-existing** agent service over the same sanitized G2.3 logical
+protocol. The client has no agent command, working directory, environment
+variables, executable, repository path, or process-launch surface.
+
+Reference topology:
+
+    TRUSTED CONTROLLER
+      |-- HostGateway ----------> private host
+      |
+      +-- ExternalAgentEndpoint ---- TCP ----> PRE-EXISTING AGENT SERVICE
+
+The controller may still launch trusted-side private-host infrastructure. It does
+not launch, stop, or own the external evaluated agent service. Disconnect closes
+only the controller socket and never sends SHUTDOWN.
+
+A reference TCP service is provided for transport regression:
+
+    PYTHONPATH=src:. python -m gym.agent_socket_server --host 127.0.0.1 --port 8765
+
+In another process, the trusted-side reference runner can connect to it:
+
+    PYTHONPATH=src:. python -m gym.run_external_agent_reference \
+      --agent-host 127.0.0.1 --agent-port 8765
+
+The runner reports:
+
+    evaluation_scope=external_agent_launch_decoupling_conformance_only
+    controller_launched_agent=false
+    agent_launch_mode=external_preexisting_endpoint
+    authority_attestation=not_present
+    filesystem_authority_isolated=unverified
+    kernel_authority_isolated=unverified
+    credential_authority_isolated=unverified
+    native_competence_claim=false
+
+These labels are deliberate. A TCP address proves neither filesystem/kernel
+isolation nor model/machine identity. The reference TCP transport also provides
+no peer authentication or confidentiality, so it is not suitable across an
+untrusted network for native/private evaluation.
+
+What G2.4 establishes is narrower and testable: the trusted controller no longer
+chooses or spawns the evaluated agent process, while G2.3 request-id, turn,
+transcript, ledger cross-binding, and learning gates remain intact.
+
+See `gym/G24_CONTRACT.md`.
+
 ## Run locally
 
     PYTHONPATH=src:. python -m gym.validate_baseline
@@ -326,5 +379,5 @@ Both remain reference contract conformance, not native competence evidence.
 
 Future gym upgrades should preserve gym/BASELINE_CONTRACT.md unless a later
 checkpoint explicitly replaces an invariant with a stricter contract. G2,
-G2.1, G2.2, and G2.3 are strict supersets; the G1 baseline file is
+G2.1, G2.2, G2.3, and G2.4 are strict supersets; the G1 baseline file is
 intentionally unchanged.

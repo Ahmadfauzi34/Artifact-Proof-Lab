@@ -42,6 +42,7 @@ from .isolated_agent import (
     IsolatedEpisodeResult,
     run_isolated_episode,
 )
+from .external_agent import ExternalAgentEndpoint
 from .subprocess_host import SubprocessHostGateway
 
 __all__ = [
@@ -58,6 +59,7 @@ __all__ = [
     "AgentTranscriptError",
     "AgentTaskView",
     "EpisodeResult",
+    "ExternalAgentEndpoint",
     "HostActionRejected",
     "HostGateway",
     "HostProtocolClosed",
