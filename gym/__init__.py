@@ -42,11 +42,30 @@ from .isolated_agent import (
     IsolatedEpisodeResult,
     run_isolated_episode,
 )
+from .authority_attestation import (
+    AuthorityAttestationError,
+    AuthorityAttestationReceipt,
+    AuthorityAttestationRequest,
+    AuthorityClaims,
+    AuthorityVerification,
+    ReferenceHMACAuthorityAttestor,
+    ReferenceHMACAuthorityVerifier,
+)
+from .attested_external import (
+    AttestedExternalEpisodeResult,
+    run_attested_external_episode,
+)
 from .external_agent import ExternalAgentEndpoint
 from .subprocess_host import SubprocessHostGateway
 
 __all__ = [
     "AdmissionReceipt",
+    "AttestedExternalEpisodeResult",
+    "AuthorityAttestationError",
+    "AuthorityAttestationReceipt",
+    "AuthorityAttestationRequest",
+    "AuthorityClaims",
+    "AuthorityVerification",
     "AgentBoundaryTranscript",
     "AgentDecisionReceipt",
     "AgentEndpoint",
@@ -78,9 +97,12 @@ __all__ = [
     "PrivatePackTask",
     "PublicTask",
     "ReferenceGym",
+    "ReferenceHMACAuthorityAttestor",
+    "ReferenceHMACAuthorityVerifier",
     "SubprocessAgentEndpoint",
     "SubprocessHostGateway",
     "TerminalReason",
     "TrajectoryLedger",
+    "run_attested_external_episode",
     "run_isolated_episode",
 ]
