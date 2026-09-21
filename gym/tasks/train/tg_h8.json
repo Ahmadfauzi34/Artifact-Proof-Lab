@@ -3,7 +3,7 @@
   "domain": "repository_coding",
   "skill_targets": ["coding", "recovery", "proof", "budget_discipline"],
   "description": "Conflicting code claims must be resolved under a tight action and tool-cost budget. Demonstrate failure, apply one bounded repair, and earn acceptance through regression.",
-  "environment": {"snapshot_id": "env-91f4c8", "runner": "reference-v1", "public_inputs": []},
+  "environment": {"snapshot_id": "env-e5b8c7", "runner": "reference-v1", "public_inputs": []},
   "allowed_actions": ["RUN_TARGETED_TEST", "APPLY_CANDIDATE_FIX", "RUN_REGRESSION", "ROLLBACK", "DEFER"],
   "budget": {"max_steps": 3, "max_tool_cost": 1.5, "max_generative_calls": 0},
   "split": "train",
