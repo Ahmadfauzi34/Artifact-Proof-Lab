@@ -632,3 +632,44 @@ Binary role:
     proof-gym-runtime negative-train
 
 See `gym/G42_CONTRACT.md`.
+
+
+## G4.3 external-agent proof-gated training receipts
+
+G4.3 connects the existing G2.4 external AgentEndpoint boundary to train-split
+learning admission without granting the gym write access to the external
+agent's private state.
+
+The controller executes actual train episodes, verifies semantic, provenance,
+trajectory, Artifact-Proof integrity and agent-transcript binding, then emits
+portable receipts classified as:
+
+```text
+positive
+typed_negative
+none
+```
+
+The positive and typed-negative gates mirror G4/G4.2. All other failures remain
+non-learning evidence. The receipt includes ledger/transcript/task-view
+commitments, separated reward channels and the sanitized decision trace, but not
+private reasoning or raw generated candidate text.
+
+Source command:
+
+```text
+PYTHONPATH=src:. python -m gym.run_external_agent_training \
+  --agent-host 127.0.0.1 --agent-port 8765
+```
+
+Binary role:
+
+```text
+proof-gym-runtime external-agent-train \
+  --agent-host 127.0.0.1 --agent-port 8765
+```
+
+The output explicitly states `gym_applied_learning=false` and
+`consumer_must_apply_receipts=true`. A consumer such as Assistant Dev must
+verify and admit the receipt through its own learning boundary before mutating
+its state. See `gym/G43_CONTRACT.md`.
