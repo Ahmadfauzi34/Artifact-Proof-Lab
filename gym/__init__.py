@@ -62,6 +62,12 @@ from .adaptive_policy import (
     QStat,
     SemanticStateEncoder,
 )
+from .on_policy import (
+    BoundedExplorationPolicy,
+    OnPolicyTrainer,
+    SearchReceipt,
+    TaskSearchResult,
+)
 from .curriculum import (
     CURRICULUM_FORMAT,
     PROMOTION_RECEIPT_FORMAT,
@@ -85,6 +91,7 @@ __all__ = [
     "AuthorityAttestationRequest",
     "AuthorityClaims",
     "AuthorityVerification",
+    "BoundedExplorationPolicy",
     "CanonicalIntentAdapter",
     "CURRICULUM_FORMAT",
     "Curriculum",
@@ -116,6 +123,7 @@ __all__ = [
     "LocalReferenceAgentEndpoint",
     "LocalReferenceHost",
     "Observation",
+    "OnPolicyTrainer",
     "PROMOTION_RECEIPT_FORMAT",
     "PolicyDecision",
     "PromotionReceipt",
@@ -129,8 +137,10 @@ __all__ = [
     "ReferenceHMACAuthorityAttestor",
     "ReferenceHMACAuthorityVerifier",
     "SubprocessAgentEndpoint",
+    "SearchReceipt",
     "SemanticStateEncoder",
     "SubprocessHostGateway",
+    "TaskSearchResult",
     "TerminalReason",
     "TrajectoryLedger",
     "evaluate_stage",

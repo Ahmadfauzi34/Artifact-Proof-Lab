@@ -546,3 +546,41 @@ The runner reports:
 
 This is real mutable policy learning, but it is not yet autonomous exploration or
 negative-outcome RL. See gym/G4_CONTRACT.md.
+
+
+## G4.1 proof-gated on-policy search
+
+G4.1 removes ReferencePolicy from the training actor path.
+
+BoundedExplorationPolicy exploits learned G4 Q state when available and otherwise
+searches a typed canonical-intent family. Failed episodes may move only the
+separate search cursor, and only when provenance, trajectory, and Artifact-Proof
+integrity validate. Failed episodes never receive Q learning credit in G4.1.
+
+Reference behavior:
+
+    9 train tasks
+    16 total training attempts
+    7 validated rejected search attempts
+    9 admitted Q-learning updates
+    11 learned state-intent pairs
+    validation 20% -> 100%
+    holdout 0% -> 100%
+
+Reference command:
+
+    PYTHONPATH=src:. python -m gym.run_on_policy_training_reference
+
+Binary role:
+
+    proof-gym-runtime on-policy-train
+
+The runner reports
+`evaluation_scope=reference_on_policy_search_conformance_only` and
+`reference_policy_used_for_training=false`.
+
+The bounded candidate families are a hand-authored typed exploration prior.
+G4.1 therefore establishes teacher-free bounded on-policy search, not arbitrary
+unstructured exploration or negative-reward RL.
+
+See `gym/G41_CONTRACT.md`.
