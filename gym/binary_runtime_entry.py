@@ -16,6 +16,7 @@ ROLE_MODULES = {
     "private-pack": "gym.run_private_pack_reference",
     "isolated-private-pack": "gym.run_isolated_private_pack_reference",
     "external-agent-reference": "gym.run_external_agent_reference",
+    "external-agent-train": "gym.run_external_agent_training",
     "attested-external-reference": "gym.run_attested_external_reference",
     "private-host": "gym.private_host_server",
     "agent-worker": "gym.agent_worker",
@@ -35,6 +36,7 @@ def _bootstrap_bundle() -> None:
         raise SystemExit(f"runtime payload missing: {lib}")
     sys.path.insert(0, str(lib))
     os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    sys.dont_write_bytecode = True
 
 
 def _usage() -> str:

@@ -96,6 +96,7 @@ def compile_launcher(project_root: Path, output: Path) -> None:
 def build_manifest(
     output: Path,
     source_commit: str | None,
+    source_head_commit: str | None,
 ) -> dict:
     payload = {}
     for path in sorted((output / "lib").rglob("*")):
@@ -108,6 +109,7 @@ def build_manifest(
     return {
         "format": "proof-gym-binary-runtime-v1",
         "source_commit": source_commit,
+        "source_head_commit": source_head_commit,
         "artifact": {
             "binary": "proof-gym-runtime",
             "binary_sha256": sha256_file(binary),
@@ -132,6 +134,7 @@ def build_manifest(
                 "private-pack",
                 "isolated-private-pack",
                 "external-agent-reference",
+                "external-agent-train",
                 "attested-external-reference",
                 "private-host",
                 "agent-worker",
@@ -157,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("dist/proof-gym-runtime"),
     )
     parser.add_argument("--source-commit")
+    parser.add_argument("--source-head-commit")
     args = parser.parse_args(argv)
 
     root = args.project_root.resolve()
@@ -168,7 +172,11 @@ def main(argv: list[str] | None = None) -> int:
     copy_payload(root, output)
     compile_launcher(root, output)
 
-    document = build_manifest(output, args.source_commit)
+    document = build_manifest(
+        output,
+        args.source_commit,
+        args.source_head_commit,
+    )
     (output / "BINARY_RUNTIME_MANIFEST.json").write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n"
     )
