@@ -132,6 +132,7 @@ def build_manifest(
                 "private-pack",
                 "isolated-private-pack",
                 "external-agent-reference",
+                "external-agent-train",
                 "attested-external-reference",
                 "private-host",
                 "agent-worker",
