@@ -29,6 +29,8 @@ jobs:
 
   binary-runtime-artifact:
     runs-on: ubuntu-latest
+    env:
+      SOURCE_HEAD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,6 +42,7 @@ jobs:
         run: |
           python scripts/build_binary_runtime.py \
             --source-commit "${GITHUB_SHA}" \
+            --source-head-commit "${SOURCE_HEAD_COMMIT}" \
             --output dist/proof-gym-runtime
       - name: Verify binary manifest identity
         run: |
@@ -51,6 +54,7 @@ jobs:
           path = Path("dist/proof-gym-runtime/BINARY_RUNTIME_MANIFEST.json")
           doc = json.loads(path.read_text())
           assert doc["source_commit"] == os.environ["GITHUB_SHA"]
+          assert doc["source_head_commit"] == os.environ["SOURCE_HEAD_COMMIT"]
           assert doc["build"]["python_version"].startswith("3.13.")
           assert doc["build"]["python_soabi"].startswith("cpython-313-")
           assert doc["build"]["requires_system_libpython"] is True
@@ -73,6 +77,69 @@ jobs:
           python -m gym.run_negative_experience_training_reference > /tmp/source-negative.json
           dist/proof-gym-runtime/proof-gym-runtime negative-train > /tmp/binary-negative.json
           cmp /tmp/source-negative.json /tmp/binary-negative.json
+      - name: Smoke external-agent training receipts
+        run: |
+          dist/proof-gym-runtime/proof-gym-runtime agent-socket-server \
+            --host 127.0.0.1 --port 8765 > /tmp/agent-server.out 2>/tmp/agent-server.err &
+          agent_pid=$!
+          trap 'kill "$agent_pid" 2>/dev/null || true' EXIT
+          sleep 1
+          dist/proof-gym-runtime/proof-gym-runtime external-agent-train \
+            --agent-host 127.0.0.1 --agent-port 8765 > /tmp/external-training.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          doc = json.loads(Path("/tmp/external-training.json").read_text())
+          assert doc["gym_applied_learning"] is False
+          assert doc["consumer_must_apply_receipts"] is True
+          assert doc["task_count"] > 0
+          assert doc["positive_receipt_count"] == doc["task_count"]
+          assert doc["typed_negative_receipt_count"] == 0
+          assert doc["non_learning_receipt_count"] == 0
+          assert all(row["learning_admissible"] for row in doc["receipts"])
+          print(json.dumps({
+              "task_count": doc["task_count"],
+              "positive_receipt_count": doc["positive_receipt_count"],
+          }, sort_keys=True))
+          PY
+          kill "$agent_pid" 2>/dev/null || true
+          wait "$agent_pid" 2>/dev/null || true
+          trap - EXIT
+      - name: Verify final binary payload coverage
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path("dist/proof-gym-runtime")
+          doc = json.loads((root / "BINARY_RUNTIME_MANIFEST.json").read_text())
+          binary = root / doc["artifact"]["binary"]
+          binary_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
+          assert binary_sha == doc["artifact"]["binary_sha256"]
+
+          declared = set(doc["artifact"]["payload"])
+          actual = {
+              path.relative_to(root).as_posix()
+              for path in (root / "lib").rglob("*")
+              if path.is_file()
+          }
+          assert actual == declared, {
+              "unlisted": sorted(actual - declared),
+              "missing": sorted(declared - actual),
+          }
+          for relative, metadata in doc["artifact"]["payload"].items():
+              digest = hashlib.sha256((root / relative).read_bytes()).hexdigest()
+              assert digest == metadata["sha256"], relative
+          assert not list((root / "lib").rglob("__pycache__"))
+          assert not list((root / "lib").rglob("*.pyc"))
+          print(json.dumps({
+              "binary_sha256": binary_sha,
+              "payload_file_count": len(actual),
+              "manifest_complete": True,
+          }, sort_keys=True))
+          PY
       - name: Upload proof-gym runtime
         uses: actions/upload-artifact@v4
         with:
