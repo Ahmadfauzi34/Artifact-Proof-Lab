@@ -124,6 +124,7 @@ def build_manifest(
         "runtime_roles": sorted(
             [
                 "adaptive-train",
+                "negative-train",
                 "on-policy-train",
                 "curriculum",
                 "reference",

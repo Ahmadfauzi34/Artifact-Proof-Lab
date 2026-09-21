@@ -68,6 +68,14 @@ from .on_policy import (
     SearchReceipt,
     TaskSearchResult,
 )
+from .negative_experience import (
+    NegativeAwareExplorationPolicy,
+    NegativeExperienceReceipt,
+    NegativeExperienceStore,
+    NegativeExperienceTrainer,
+    NegativeStat,
+    NegativeTrainingResult,
+)
 from .curriculum import (
     CURRICULUM_FORMAT,
     PROMOTION_RECEIPT_FORMAT,
@@ -122,6 +130,12 @@ __all__ = [
     "LedgerEntry",
     "LocalReferenceAgentEndpoint",
     "LocalReferenceHost",
+    "NegativeAwareExplorationPolicy",
+    "NegativeExperienceReceipt",
+    "NegativeExperienceStore",
+    "NegativeExperienceTrainer",
+    "NegativeStat",
+    "NegativeTrainingResult",
     "Observation",
     "OnPolicyTrainer",
     "PROMOTION_RECEIPT_FORMAT",
