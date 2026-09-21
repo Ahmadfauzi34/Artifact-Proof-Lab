@@ -17,6 +17,7 @@ from gym.external_training import (
     verify_external_training_receipt,
 )
 from gym.isolated_agent import IsolatedEpisodeResult
+from gym.binary_runtime_entry import _resolve
 from gym.ledger import sha256_json
 
 
@@ -96,6 +97,12 @@ class ExternalTrainingReceiptTests(unittest.TestCase):
             agent_transcript_reason="bound",
             agent_transcript_root_sha256="b" * 64,
             agent_transcript_entries=transcript_entries,
+        )
+
+    def test_binary_role_resolves(self):
+        self.assertEqual(
+            _resolve(["external-agent-train"]),
+            ("module", "gym.run_external_agent_training", []),
         )
 
     def test_positive_receipt(self):
