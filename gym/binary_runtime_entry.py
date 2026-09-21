@@ -7,6 +7,7 @@ import sys
 import tempfile
 
 ROLE_MODULES = {
+    "negative-train": "gym.run_negative_experience_training_reference",
     "on-policy-train": "gym.run_on_policy_training_reference",
     "adaptive-train": "gym.run_adaptive_training_reference",
     "curriculum": "gym.run_curriculum_reference",
