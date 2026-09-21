@@ -55,6 +55,18 @@ from .attested_external import (
     AttestedExternalEpisodeResult,
     run_attested_external_episode,
 )
+from .curriculum import (
+    CURRICULUM_FORMAT,
+    PROMOTION_RECEIPT_FORMAT,
+    Curriculum,
+    CurriculumError,
+    CurriculumStage,
+    PromotionReceipt,
+    evaluate_stage,
+    load_curriculum,
+    validate_curriculum_tasks,
+    verify_promotion_chain,
+)
 from .external_agent import ExternalAgentEndpoint
 from .subprocess_host import SubprocessHostGateway
 
@@ -66,6 +78,10 @@ __all__ = [
     "AuthorityAttestationRequest",
     "AuthorityClaims",
     "AuthorityVerification",
+    "CURRICULUM_FORMAT",
+    "Curriculum",
+    "CurriculumError",
+    "CurriculumStage",
     "AgentBoundaryTranscript",
     "AgentDecisionReceipt",
     "AgentEndpoint",
@@ -91,7 +107,9 @@ __all__ = [
     "LocalReferenceAgentEndpoint",
     "LocalReferenceHost",
     "Observation",
+    "PROMOTION_RECEIPT_FORMAT",
     "PolicyDecision",
+    "PromotionReceipt",
     "PrivateHoldoutPack",
     "PrivatePackError",
     "PrivatePackTask",
@@ -103,6 +121,10 @@ __all__ = [
     "SubprocessHostGateway",
     "TerminalReason",
     "TrajectoryLedger",
+    "evaluate_stage",
+    "load_curriculum",
     "run_attested_external_episode",
     "run_isolated_episode",
+    "validate_curriculum_tasks",
+    "verify_promotion_chain",
 ]

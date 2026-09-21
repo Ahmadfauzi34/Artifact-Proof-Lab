@@ -250,6 +250,7 @@ Reference command:
     PYTHONPATH=src:. python -m gym.agent_socket_server --host 127.0.0.1 --port 8765
     PYTHONPATH=src:. python -m gym.run_external_agent_reference --agent-host 127.0.0.1 --agent-port 8765
     PYTHONPATH=src:. python -m gym.run_attested_external_reference --agent-host 127.0.0.1 --agent-port 8765
+    PYTHONPATH=src:. python -m gym.run_curriculum_reference
 
 The output explicitly reports
 `evaluation_scope=reference_private_pack_conformance_only` and
@@ -421,6 +422,71 @@ The output reports:
 For production, replace the reference attestor/verifier with an independently
 trusted deployment-specific issuer/verifier. See `gym/G25_CONTRACT.md` and
 `gym/contracts/authority_attestation.schema.json`.
+
+## G3 proof-gated training curriculum
+
+G3 shifts the gym from boundary construction toward **training pressure**.
+
+The bundled reference curriculum expands the reference training set from
+3 train / 2 validation tasks to:
+
+    9 train tasks
+    5 validation tasks
+    5 promotion stages
+
+The additional tasks are not simple text duplicates. Host-side hidden scenario
+state now varies across episodes.
+
+Examples:
+
+- a CLI process can genuinely be `running` or `stopped`;
+- a stopped process requires inspect -> restart -> health recheck;
+- structured-data source B can be the signed authority;
+- validation uses different observation patterns and numeric regimes;
+- safe defer appears in train rather than only validation;
+- generative retry appears in train with reject-before-accept;
+- repository repair is repeated under a tighter step/tool-cost budget.
+
+Hidden scenario fields stay inside the HostTaskDescriptor. They are not copied
+into AgentTaskView.
+
+The reference curriculum is:
+
+    gym/curriculum/g3_reference.json
+
+Stages:
+
+    0 ambiguity_foundation
+    1 evidence_gated_recovery
+    2 mutation_and_regression
+    3 bounded_generation
+    4 provenance_flip_generalization
+
+Every stage has separate thresholds for:
+
+    train admission
+    validation admission
+    budget exhaustion
+    train learning updates
+
+Validation is always read-only. Any validation EpisodeResult carrying
+`learning_updated=true` invalidates promotion evidence.
+
+Promotion is checkpointed as a SHA-256 chain. A stage receipt commits to the
+previous checkpoint plus exact task IDs and observed metrics. A failed stage
+stops the chain; later stages cannot be promoted on top of it.
+
+Reference command:
+
+    PYTHONPATH=src:. python -m gym.run_curriculum_reference
+
+The runner reports
+`evaluation_scope=reference_curriculum_conformance_only` and
+`native_competence_claim=false`. A reference-controller promotion chain is
+training-infrastructure evidence, not native agent capability.
+
+See `gym/G3_CONTRACT.md` and
+`gym/contracts/curriculum.schema.json`.
 
 ## Run locally
 

@@ -1,0 +1,19 @@
+{
+  "task_id": "vg_f7",
+  "domain": "cli_process",
+  "skill_targets": ["perception", "recovery", "proof", "conflicting_evidence"],
+  "description": "Mixed health attempts include an apparent recovery, but the hidden current process is stopped. Resolve state before any destructive action and verify recovery.",
+  "environment": {
+    "snapshot_id": "env-7c01e4",
+    "runner": "reference-v1",
+    "public_inputs": [],
+    "scenario": {
+      "initial_health": ["FAIL", "PASS", "FAIL"],
+      "process_state": "stopped"
+    }
+  },
+  "allowed_actions": ["INSPECT_PROCESS_STATE", "RETRY_HEALTHCHECK", "RESTART_PROCESS", "DEFER"],
+  "budget": {"max_steps": 3, "max_tool_cost": 2.0, "max_generative_calls": 0},
+  "split": "validation",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false, "curriculum": "g3", "difficulty": 3}
+}

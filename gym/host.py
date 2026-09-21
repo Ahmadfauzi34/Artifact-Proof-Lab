@@ -75,59 +75,165 @@ class _BaseEnvironment:
 
 
 class CliProcessEnvironment(_BaseEnvironment):
-    """Same-check retries conflict; inspect process state before destructive repair."""
+    """Resolve temporal ambiguity before a destructive recovery action."""
+
+    def __init__(self, task: PublicTask) -> None:
+        super().__init__(task)
+        scenario = task.environment.get("scenario", {})
+        if not isinstance(scenario, dict):
+            raise ValueError("cli_process scenario must be an object")
+        initial_health = scenario.get("initial_health", ["FAIL", "PASS"])
+        if (
+            not isinstance(initial_health, list)
+            or len(initial_health) < 2
+            or any(item not in {"PASS", "FAIL"} for item in initial_health)
+        ):
+            raise ValueError("cli_process initial_health must contain PASS/FAIL states")
+        process_state = scenario.get("process_state", "running")
+        if process_state not in {"running", "stopped"}:
+            raise ValueError("cli_process process_state must be running or stopped")
+        self._initial_health = tuple(initial_health)
+        self._process_state = process_state
+        self._inspected = False
+        self._restarted = False
 
     def reset(self) -> tuple[Observation, ...]:
-        return (
-            self._obs(check_id="health", probe_id="health", attempt_id=1, observation_type="healthcheck", status="FAIL", value="timeout"),
-            self._obs(check_id="health", probe_id="health", attempt_id=2, observation_type="healthcheck", status="PASS", value="ok"),
+        values = {"PASS": "ok", "FAIL": "timeout"}
+        return tuple(
+            self._obs(
+                check_id="health",
+                probe_id="health",
+                attempt_id=index,
+                observation_type="healthcheck",
+                status=status,
+                value=values[status],
+            )
+            for index, status in enumerate(self._initial_health, start=1)
         )
 
     def step(self, action: str, *, candidate: str | None = None) -> StepOutcome:
         if action == "INSPECT_PROCESS_STATE":
-            completed = subprocess.run(
-                [sys.executable, "-c", "print('running')"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            running = completed.returncode == 0 and completed.stdout.strip() == "running"
+            self._inspected = True
+            running = self._process_state == "running"
             obs = self._obs(
                 check_id="process-state",
                 probe_id="process-state",
                 attempt_id=1,
                 observation_type="process_inspection",
                 status="PASS" if running else "FAIL",
-                value="running" if running else "unknown",
+                value=self._process_state,
                 cost=0.25,
             )
             self._semantic_valid = running
             return StepOutcome((obs,), done=running)
-        if action == "RETRY_HEALTHCHECK":
-            obs = self._obs(check_id="health", probe_id="health", attempt_id=self._next_attempt("health"), observation_type="healthcheck", status="PASS", value="ok", cost=0.2)
-            return StepOutcome((obs,), done=False)
+
         if action == "RESTART_PROCESS":
-            obs = self._obs(check_id="restart", probe_id="restart", attempt_id=1, observation_type="mutation", status="WARN", value="destructive-repair-without-proof", cost=1.0)
+            valid = self._inspected and self._process_state == "stopped"
+            if valid:
+                self._process_state = "running"
+                self._restarted = True
+            obs = self._obs(
+                check_id="restart",
+                probe_id="restart",
+                attempt_id=self._next_attempt("restart"),
+                observation_type="mutation",
+                status="PASS" if valid else "WARN",
+                value="restart-after-proof" if valid else "destructive-repair-without-proof",
+                cost=1.0,
+            )
             return StepOutcome((obs,), done=False)
+
+        if action == "RETRY_HEALTHCHECK":
+            valid = self._process_state == "running" and (
+                self._restarted or self._inspected
+            )
+            obs = self._obs(
+                check_id="health",
+                probe_id="health",
+                attempt_id=self._next_attempt("health"),
+                observation_type="healthcheck",
+                status="PASS" if valid else "FAIL",
+                value="ok" if valid else "timeout",
+                cost=0.2,
+            )
+            self._semantic_valid = valid
+            return StepOutcome((obs,), done=valid)
+
         if action.startswith("DEFER_") or action == "DEFER":
-            obs = self._obs(check_id="defer", probe_id="defer", attempt_id=1, observation_type="decision", status="FAIL", value=action)
+            obs = self._obs(
+                check_id="defer",
+                probe_id="defer",
+                attempt_id=1,
+                observation_type="decision",
+                status="FAIL",
+                value=action,
+            )
             return StepOutcome((obs,), done=True)
         raise ValueError(f"unsupported CLI action: {action}")
 
 
 class StructuredDataEnvironment(_BaseEnvironment):
-    """Independent probes disagree; provenance inspection resolves authority."""
+    """Independent probes disagree; provenance, not position, resolves authority."""
 
     def __init__(self, task: PublicTask) -> None:
         super().__init__(task)
         self._checked_provenance = False
-        (self.root / "provenance.json").write_text(json.dumps({"source_a": "signed", "source_b": "cache-unanchored"}))
+        scenario = task.environment.get("scenario", {})
+        if not isinstance(scenario, dict):
+            raise ValueError("structured_data scenario must be an object")
+        measurements = scenario.get(
+            "measurements",
+            {"source_a": 42, "source_b": 99},
+        )
+        provenance = scenario.get(
+            "provenance",
+            {"source_a": "signed", "source_b": "cache-unanchored"},
+        )
+        if (
+            not isinstance(measurements, dict)
+            or set(measurements) != {"source_a", "source_b"}
+        ):
+            raise ValueError("structured_data measurements must define source_a/source_b")
+        if (
+            not isinstance(provenance, dict)
+            or set(provenance) != {"source_a", "source_b"}
+        ):
+            raise ValueError("structured_data provenance must define source_a/source_b")
+        signed = [
+            name for name, authority in provenance.items()
+            if authority == "signed"
+        ]
+        if len(signed) != 1:
+            raise ValueError("structured_data scenario must have exactly one signed source")
+        self._measurements = dict(measurements)
+        self._provenance = dict(provenance)
+        self._admissible_action = (
+            "SELECT_SOURCE_A"
+            if signed[0] == "source_a"
+            else "SELECT_SOURCE_B"
+        )
+        (self.root / "provenance.json").write_text(
+            json.dumps(self._provenance)
+        )
 
     def reset(self) -> tuple[Observation, ...]:
         return (
-            self._obs(check_id="source-a", probe_id="sensor-a", attempt_id=1, observation_type="measurement", status="PASS", value=42),
-            self._obs(check_id="source-b", probe_id="sensor-b", attempt_id=1, observation_type="measurement", status="PASS", value=99),
+            self._obs(
+                check_id="source-a",
+                probe_id="sensor-a",
+                attempt_id=1,
+                observation_type="measurement",
+                status="PASS",
+                value=self._measurements["source_a"],
+            ),
+            self._obs(
+                check_id="source-b",
+                probe_id="sensor-b",
+                attempt_id=1,
+                observation_type="measurement",
+                status="PASS",
+                value=self._measurements["source_b"],
+            ),
         )
 
     def step(self, action: str, *, candidate: str | None = None) -> StepOutcome:
@@ -146,7 +252,10 @@ class StructuredDataEnvironment(_BaseEnvironment):
             )
             return StepOutcome((obs,), done=False)
         if action in {"SELECT_SOURCE_A", "SELECT_SOURCE_B"}:
-            valid = self._checked_provenance and action == "SELECT_SOURCE_A"
+            valid = (
+                self._checked_provenance
+                and action == self._admissible_action
+            )
             self._semantic_valid = valid
             obs = self._obs(
                 check_id="selection",
@@ -159,7 +268,14 @@ class StructuredDataEnvironment(_BaseEnvironment):
             )
             return StepOutcome((obs,), done=True)
         if action.startswith("DEFER_") or action == "DEFER":
-            obs = self._obs(check_id="defer", probe_id="defer", attempt_id=1, observation_type="decision", status="FAIL", value=action)
+            obs = self._obs(
+                check_id="defer",
+                probe_id="defer",
+                attempt_id=1,
+                observation_type="decision",
+                status="FAIL",
+                value=action,
+            )
             return StepOutcome((obs,), done=True)
         raise ValueError(f"unsupported data action: {action}")
 

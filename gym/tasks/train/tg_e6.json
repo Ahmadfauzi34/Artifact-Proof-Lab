@@ -1,0 +1,19 @@
+{
+  "task_id": "tg_e6",
+  "domain": "structured_data",
+  "skill_targets": ["perception", "decision", "proof", "conflicting_evidence"],
+  "description": "Two measurements disagree. Do not prefer the first source by habit; inspect provenance and admit only the source with signed authority.",
+  "environment": {
+    "snapshot_id": "env-2a96bd",
+    "runner": "reference-v1",
+    "public_inputs": [],
+    "scenario": {
+      "measurements": {"source_a": 13, "source_b": 71},
+      "provenance": {"source_a": "cache-unanchored", "source_b": "signed"}
+    }
+  },
+  "allowed_actions": ["CHECK_PROVENANCE", "SELECT_SOURCE_A", "SELECT_SOURCE_B", "DEFER"],
+  "budget": {"max_steps": 2, "max_tool_cost": 1.0, "max_generative_calls": 0},
+  "split": "train",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false, "curriculum": "g3", "difficulty": 3}
+}

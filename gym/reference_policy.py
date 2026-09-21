@@ -21,15 +21,55 @@ class ReferencePolicy:
         statuses = {(item.check_id, item.status) for item in observations}
 
         if "INSPECT_PROCESS_STATE" in actions:
-            if not any(item.check_id == "process-state" for item in observations):
-                return PolicyDecision.select("INSPECT_PROCESS_STATE", "resolve conflicting temporal health evidence with an independent process observation")
+            process_state = next(
+                (item for item in observations if item.check_id == "process-state"),
+                None,
+            )
+            restart = next(
+                (
+                    item
+                    for item in observations
+                    if item.check_id == "restart" and item.status == "PASS"
+                ),
+                None,
+            )
+            if process_state is None:
+                return PolicyDecision.select(
+                    "INSPECT_PROCESS_STATE",
+                    "resolve conflicting temporal health evidence with an independent process observation",
+                )
+            if process_state.value == "stopped" and restart is None:
+                return PolicyDecision.select(
+                    "RESTART_PROCESS",
+                    "destructive recovery is allowed only after process-state evidence proves it is stopped",
+                )
+            if restart is not None:
+                return PolicyDecision.select(
+                    "RETRY_HEALTHCHECK",
+                    "verify service health after evidence-gated recovery",
+                )
 
         if "CHECK_PROVENANCE" in actions:
-            provenance = next((item for item in observations if item.check_id == "provenance"), None)
+            provenance = next(
+                (item for item in observations if item.check_id == "provenance"),
+                None,
+            )
             if provenance is None:
-                return PolicyDecision.select("CHECK_PROVENANCE", "independent probes disagree; inspect source authority")
-            if isinstance(provenance.value, dict) and provenance.value.get("source_a") == "signed":
-                return PolicyDecision.select("SELECT_SOURCE_A", "select the source supported by admitted provenance")
+                return PolicyDecision.select(
+                    "CHECK_PROVENANCE",
+                    "independent probes disagree; inspect source authority",
+                )
+            if isinstance(provenance.value, dict):
+                if provenance.value.get("source_a") == "signed":
+                    return PolicyDecision.select(
+                        "SELECT_SOURCE_A",
+                        "select the source supported by admitted provenance",
+                    )
+                if provenance.value.get("source_b") == "signed":
+                    return PolicyDecision.select(
+                        "SELECT_SOURCE_B",
+                        "select the source supported by admitted provenance",
+                    )
 
         if "INSPECT_CONFIG_ORIGIN" in actions:
             origin = next((item for item in observations if item.check_id == "config-origin"), None)
