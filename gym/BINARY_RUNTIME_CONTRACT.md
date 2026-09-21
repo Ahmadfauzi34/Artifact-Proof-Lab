@@ -64,6 +64,33 @@ This preserves existing subprocess code that uses `sys.executable -B -m ...`.
 One binary artifact may therefore execute as multiple OS processes while keeping
 host and agent logical/process boundaries intact.
 
+
+## Restricted temporary-script compatibility
+
+Some trusted reference environments intentionally execute generated Python
+probes through `sys.executable -B <script.py>`. In a Cython-embedded runtime,
+`sys.executable` points back to `proof-gym-runtime`, so the binary must
+preserve the relevant Python CLI semantics without becoming a general-purpose
+interpreter.
+
+The binary therefore accepts script-path execution only when all of these hold:
+
+- the path is absolute and ends in `.py`;
+- the file is a regular file;
+- the path is inside the system temporary root;
+- its first relative directory starts with `gym-`;
+- no path component is a symlink.
+
+During that restricted execution, the script directory is temporarily inserted
+at `sys.path[0]`, matching the import behavior required by
+`python /path/to/script.py`. This is what allows a generated
+`test_calc.py` to import its sibling `calc.py`.
+
+Arbitrary scripts outside the bounded `gym-*` temporary workspace remain
+rejected. The compatibility path exists for trusted host-created probes and does
+not grant the evaluated external AgentEndpoint general script-execution
+authority.
+
 ## Authority boundary
 
 Binary packaging does not collapse authorities.
@@ -108,6 +135,15 @@ was added: the Cython/GCC binary and Python source produced byte-identical outpu
 for policy learning, validation simulation, holdout transfer, and ledger-tamper
 rejection.
 
-That smoke does **not** by itself establish full ReferenceGym + Artifact-Proof
-binary validation. The full repository binary bundle must be built and executed
-before making that stronger claim.
+The full G4 execution path was subsequently reconstructed from GitHub blob-bound
+runtime modules and executed through both source and binary coordinates. The
+initial binary run exposed two repository-probe compatibility defects:
+unsupported script-path self-spawn and missing script-directory `sys.path[0]`
+semantics. After the restricted compatibility fix, the deterministic G4 source
+and binary outputs were byte-identical across actual ReferenceGym, LocalReferenceHost,
+Artifact-Proof verification, nine train tasks, five validation tasks, and the
+bundled holdout.
+
+This establishes reference G4 binary-runtime equivalence for that execution
+path. It remains reference-gym evidence, not native competence or independent
+authority evidence.
