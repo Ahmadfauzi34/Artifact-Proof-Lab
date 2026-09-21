@@ -1,0 +1,1 @@
+{"domain":"filesystem_config","format":"proof-gym-private-snapshot-v1","oracle":{"admissible_action":"SELECT_PROJECT_CONFIG"},"snapshot_id":"env-d13f6e","state":{"cache_config":{"timeout":5},"origin":{"cache":"unanchored","project":"signed"},"project_config":{"timeout":30}}}

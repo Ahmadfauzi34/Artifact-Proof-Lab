@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/private-holdout-pack.schema.json",
+  "title": "G2.2 Private Holdout Pack Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "pack_id", "native_competence_claim", "runtime", "tasks"],
+  "properties": {
+    "format": {"const": "proof-gym-private-holdout-pack-v1"},
+    "pack_id": {"type": "string", "minLength": 1},
+    "native_competence_claim": {"const": false},
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime_id", "path", "sha256"],
+      "properties": {
+        "runtime_id": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "path", "sha256", "snapshot"],
+        "properties": {
+          "task_id": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["snapshot_id", "path", "sha256"],
+            "properties": {
+              "snapshot_id": {"type": "string", "minLength": 1},
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

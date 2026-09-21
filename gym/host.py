@@ -20,9 +20,12 @@ class _BaseEnvironment:
         self._tmp = tempfile.TemporaryDirectory(prefix=f"gym-{task.domain}-")
         self.root = Path(self._tmp.name)
 
+    def close(self) -> None:
+        self._tmp.cleanup()
+
     def __del__(self) -> None:
         try:
-            self._tmp.cleanup()
+            self.close()
         except Exception:
             pass
 
@@ -162,17 +165,66 @@ class StructuredDataEnvironment(_BaseEnvironment):
 
 
 class FilesystemConfigEnvironment(_BaseEnvironment):
-    """Reference holdout domain with different local vocabulary from train."""
+    """Reference holdout domain whose sealed snapshot can drive hidden state."""
 
     def __init__(self, task: PublicTask) -> None:
         super().__init__(task)
         self._origin_checked = False
-        (self.root / "origin.json").write_text(json.dumps({"project": "signed", "cache": "unanchored"}))
+
+        snapshot = task.environment.get("private_snapshot")
+        if snapshot is None:
+            state = {
+                "project_config": {"timeout": 30},
+                "cache_config": {"timeout": 5},
+                "origin": {"project": "signed", "cache": "unanchored"},
+            }
+            oracle = {"admissible_action": "SELECT_PROJECT_CONFIG"}
+        else:
+            if not isinstance(snapshot, dict):
+                raise ValueError("private_snapshot must be an object")
+            if snapshot.get("snapshot_id") != task.environment.get("snapshot_id"):
+                raise ValueError("private_snapshot identity mismatch")
+            if snapshot.get("domain") != task.domain:
+                raise ValueError("private_snapshot domain mismatch")
+            state = snapshot.get("state")
+            oracle = snapshot.get("oracle")
+            if not isinstance(state, dict) or not isinstance(oracle, dict):
+                raise ValueError("private_snapshot state/oracle must be objects")
+
+        project_config = state.get("project_config")
+        cache_config = state.get("cache_config")
+        origin = state.get("origin")
+        admissible_action = oracle.get("admissible_action")
+        if not isinstance(project_config, dict) or not isinstance(cache_config, dict):
+            raise ValueError("filesystem_config snapshot must define project/cache config")
+        if not isinstance(origin, dict):
+            raise ValueError("filesystem_config snapshot must define origin")
+        if admissible_action not in {"SELECT_PROJECT_CONFIG", "SELECT_CACHE_CONFIG"}:
+            raise ValueError("filesystem_config snapshot has invalid oracle action")
+
+        self._project_config = dict(project_config)
+        self._cache_config = dict(cache_config)
+        self._admissible_action = str(admissible_action)
+        (self.root / "origin.json").write_text(json.dumps(origin))
 
     def reset(self) -> tuple[Observation, ...]:
         return (
-            self._obs(check_id="project-config", probe_id="config-reader-project", attempt_id=1, observation_type="configuration", status="PASS", value={"timeout": 30}),
-            self._obs(check_id="cache-config", probe_id="config-reader-cache", attempt_id=1, observation_type="configuration", status="PASS", value={"timeout": 5}),
+            self._obs(
+                check_id="project-config",
+                probe_id="config-reader-project",
+                attempt_id=1,
+                observation_type="configuration",
+                status="PASS",
+                value=dict(self._project_config),
+            ),
+            self._obs(
+                check_id="cache-config",
+                probe_id="config-reader-cache",
+                attempt_id=1,
+                observation_type="configuration",
+                status="PASS",
+                value=dict(self._cache_config),
+            ),
         )
 
     def step(self, action: str, *, candidate: str | None = None) -> StepOutcome:
@@ -191,7 +243,7 @@ class FilesystemConfigEnvironment(_BaseEnvironment):
             )
             return StepOutcome((obs,), done=False)
         if action in {"SELECT_PROJECT_CONFIG", "SELECT_CACHE_CONFIG"}:
-            valid = self._origin_checked and action == "SELECT_PROJECT_CONFIG"
+            valid = self._origin_checked and action == self._admissible_action
             self._semantic_valid = valid
             obs = self._obs(
                 check_id="config-selection",

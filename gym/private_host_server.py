@@ -24,6 +24,7 @@ from .host_wire import (
 )
 from .io import load_tasks
 from .ledger import sha256_json
+from .private_pack import PrivateHoldoutPack, PrivatePackError
 
 
 OPERATIONS = ("HELLO", "START", "STEP", "SEMANTIC_VERDICT", "CLOSE", "PING", "SHUTDOWN")
@@ -117,13 +118,30 @@ class ReferencePrivateHostServer:
 
 
 def serve(
-    tasks_root: Path,
+    tasks_root: Path | None,
     *,
+    pack_root: Path | None = None,
     input_stream: BinaryIO,
     output_stream: BinaryIO,
     max_message_bytes: int = DEFAULT_MAX_MESSAGE_BYTES,
 ) -> int:
-    tasks = {task.task_id: task for task in load_tasks(tasks_root)}
+    try:
+        if pack_root is not None:
+            if tasks_root is not None:
+                raise PrivatePackError("provide tasks_root or pack_root, not both")
+            pack = PrivateHoldoutPack.load(
+                pack_root,
+                expected_runtime_id="reference-v1",
+            )
+            tasks = {task_id: pack.task(task_id) for task_id in pack.task_ids}
+        else:
+            if tasks_root is None:
+                raise PrivatePackError("private host registry source is missing")
+            tasks = {task.task_id: task for task in load_tasks(tasks_root)}
+    except (OSError, ValueError, PrivatePackError) as exc:
+        print(f"private host registry rejected: {exc}", file=sys.stderr)
+        return 2
+
     if not tasks:
         print("private host task registry is empty", file=sys.stderr)
         return 2
@@ -213,11 +231,16 @@ def _task_commitment(task: HostTaskDescriptor) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Proof-Gated Gym reference private host over JSONL stdio")
-    parser.add_argument(
+    registry = parser.add_mutually_exclusive_group()
+    registry.add_argument(
         "--tasks",
         type=Path,
-        default=Path(__file__).parent / "tasks",
-        help="host-side task registry root",
+        help="host-side raw task registry root (G2.1 reference mode)",
+    )
+    registry.add_argument(
+        "--pack",
+        type=Path,
+        help="sealed private holdout pack root (G2.2 reference mode)",
     )
     parser.add_argument(
         "--max-message-bytes",
@@ -227,8 +250,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.max_message_bytes < 1024:
         parser.error("--max-message-bytes must be >= 1024")
+    tasks_root = args.tasks
+    if tasks_root is None and args.pack is None:
+        tasks_root = Path(__file__).parent / "tasks"
     return serve(
-        args.tasks,
+        tasks_root,
+        pack_root=args.pack,
         input_stream=sys.stdin.buffer,
         output_stream=sys.stdout.buffer,
         max_message_bytes=args.max_message_bytes,
