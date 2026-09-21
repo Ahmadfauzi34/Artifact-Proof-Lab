@@ -456,7 +456,7 @@ class GymG23Tests(unittest.TestCase):
         }
         with self.assertRaises(AgentProtocolError) as caught:
             worker.dispatch("START", {"task": task_wire})
-        self.assertIn("unexpected fields", str(caught.exception))
+        self.assertIn("split", str(caught.exception))
 
     def test_reference_worker_turn_is_monotonic_and_rationale_free(self):
         worker = ReferenceAgentWorker()
