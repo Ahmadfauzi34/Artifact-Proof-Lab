@@ -4,7 +4,7 @@
   "skill_targets": ["perception", "decision", "proof", "conflicting_evidence"],
   "description": "Independent measurements conflict in a new numeric regime. Inspect provenance rather than reusing a learned source-position preference.",
   "environment": {
-    "snapshot_id": "env-2a96bd",
+    "snapshot_id": "env-b8c9f0",
     "runner": "reference-v1",
     "public_inputs": [],
     "scenario": {
