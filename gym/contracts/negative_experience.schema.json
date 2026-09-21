@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/negative_experience.schema.json",
+  "title": "Proof-Gated Typed Negative Experience State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "states"],
+  "properties": {
+    "format": {
+      "const": "proof-gym-negative-experience-v1"
+    },
+    "states": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rejections"],
+          "properties": {
+            "rejections": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
