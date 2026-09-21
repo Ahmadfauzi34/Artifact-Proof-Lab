@@ -36,6 +36,7 @@ def _bootstrap_bundle() -> None:
         raise SystemExit(f"runtime payload missing: {lib}")
     sys.path.insert(0, str(lib))
     os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    sys.dont_write_bytecode = True
 
 
 def _usage() -> str:
