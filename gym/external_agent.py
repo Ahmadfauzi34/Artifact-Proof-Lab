@@ -84,6 +84,22 @@ class ExternalAgentEndpoint(AgentEndpoint):
     def controller_launched_agent(self) -> bool:
         return False
 
+    @property
+    def connected_peer(self) -> tuple[str, int]:
+        """Return the actual connected peer after the G2.3 handshake."""
+        self._ensure_connected()
+        sock = self._socket
+        if sock is None:
+            raise AgentProtocolClosed("external agent socket is not connected")
+        peer = sock.getpeername()
+        if not isinstance(peer, tuple) or len(peer) < 2:
+            self._reject_protocol("external agent peer address is invalid")
+        host = peer[0]
+        port = peer[1]
+        if not isinstance(host, str) or isinstance(port, bool) or not isinstance(port, int):
+            self._reject_protocol("external agent peer address is invalid")
+        return host, port
+
     def start(self, task: AgentTaskView) -> AgentSessionStart:
         result = self._request(
             "START",

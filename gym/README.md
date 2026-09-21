@@ -249,6 +249,7 @@ Reference command:
     PYTHONPATH=src:. python -m gym.run_isolated_private_pack_reference
     PYTHONPATH=src:. python -m gym.agent_socket_server --host 127.0.0.1 --port 8765
     PYTHONPATH=src:. python -m gym.run_external_agent_reference --agent-host 127.0.0.1 --agent-port 8765
+    PYTHONPATH=src:. python -m gym.run_attested_external_reference --agent-host 127.0.0.1 --agent-port 8765
 
 The output explicitly reports
 `evaluation_scope=reference_private_pack_conformance_only` and
@@ -363,6 +364,64 @@ transcript, ledger cross-binding, and learning gates remain intact.
 
 See `gym/G24_CONTRACT.md`.
 
+## G2.5 authority attestation boundary
+
+G2.5 adds a separate authority-evidence path. Authority truth is not accepted
+from the evaluated agent, reward, semantic success, candidate output, or policy
+rationale.
+
+Before an attested external episode, the trusted controller creates a fresh
+256-bit challenge and binds it to:
+
+- the actual connected TCP peer locator;
+- exact HostTaskDescriptor commitment;
+- exact AgentTaskView commitment;
+- an evaluation-context commitment such as the sealed private-pack commitment.
+
+That request goes to an `AuthorityAttestor`, and a trusted-side
+`AuthorityVerifier` must authenticate the resulting receipt before
+`AgentEndpoint.start()` is allowed.
+
+The receipt has separate claims for:
+
+    filesystem_isolated
+    kernel_isolated
+    credential_isolated
+    network_isolated
+    machine_identity_verified
+    model_identity_verified
+
+One claim never implies another.
+
+After the episode, the authority request is cross-bound again to the G2
+`EPISODE_START` ledger entry. Learning is still withheld until authority,
+evidence admission, G2.3 agent transcript, and ledger binding all succeed.
+
+The stdlib reference implementation uses HMAC only to regression-test receipt
+authenticity, tamper detection, fresh challenge binding, and replay rejection:
+
+    reference_hmac_conformance_only
+
+It is explicitly **not** an independent hardware/cloud/VM attestation scheme and
+cannot promote a native competence or independent-authority claim.
+
+Reference mechanics can be exercised against the same pre-existing external
+agent service:
+
+    PYTHONPATH=src:. python -m gym.run_attested_external_reference \
+      --agent-host 127.0.0.1 --agent-port 8765
+
+The output reports:
+
+    evaluation_scope=reference_authority_attestation_conformance_only
+    native_competence_claim=false
+    authority_independence_verified=false
+    authority_cryptography=shared_hmac_reference_only
+
+For production, replace the reference attestor/verifier with an independently
+trusted deployment-specific issuer/verifier. See `gym/G25_CONTRACT.md` and
+`gym/contracts/authority_attestation.schema.json`.
+
 ## Run locally
 
     PYTHONPATH=src:. python -m gym.validate_baseline
@@ -379,5 +438,5 @@ Both remain reference contract conformance, not native competence evidence.
 
 Future gym upgrades should preserve gym/BASELINE_CONTRACT.md unless a later
 checkpoint explicitly replaces an invariant with a stricter contract. G2,
-G2.1, G2.2, G2.3, and G2.4 are strict supersets; the G1 baseline file is
+G2.1, G2.2, G2.3, G2.4, and G2.5 are strict supersets; the G1 baseline file is
 intentionally unchanged.

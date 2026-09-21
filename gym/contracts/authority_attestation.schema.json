@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/authority-attestation.schema.json",
+  "title": "G2.5 Authority Attestation Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "issuer_id",
+    "assurance",
+    "challenge",
+    "endpoint_locator_sha256",
+    "host_task_commitment",
+    "agent_task_view_sha256",
+    "evaluation_context_sha256",
+    "claims",
+    "evidence_sha256",
+    "mac_sha256"
+  ],
+  "properties": {
+    "format": {"const": "proof-gym-authority-attestation-v1"},
+    "issuer_id": {"type": "string", "minLength": 1},
+    "assurance": {"type": "string", "minLength": 1},
+    "challenge": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "endpoint_locator_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "host_task_commitment": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "agent_task_view_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evaluation_context_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filesystem_isolated",
+        "kernel_isolated",
+        "credential_isolated",
+        "network_isolated",
+        "machine_identity_verified",
+        "model_identity_verified"
+      ],
+      "properties": {
+        "filesystem_isolated": {"type": "boolean"},
+        "kernel_isolated": {"type": "boolean"},
+        "credential_isolated": {"type": "boolean"},
+        "network_isolated": {"type": "boolean"},
+        "machine_identity_verified": {"type": "boolean"},
+        "model_identity_verified": {"type": "boolean"}
+      }
+    },
+    "evidence_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "mac_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
