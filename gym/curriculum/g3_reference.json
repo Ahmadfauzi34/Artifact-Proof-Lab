@@ -1,0 +1,61 @@
+{
+  "format": "proof-gym-curriculum-v1",
+  "curriculum_id": "g3-reference-proof-gated-v1",
+  "stages": [
+    {
+      "index": 0,
+      "name": "ambiguity_foundation",
+      "train_task_ids": ["tg_a7", "tg_b3", "tg_i1"],
+      "validation_task_ids": ["vg_f7"],
+      "required_skill_targets": ["perception", "conflicting_evidence", "proof"],
+      "min_train_admission_rate": 1.0,
+      "min_validation_admission_rate": 1.0,
+      "max_budget_exhaustion_rate": 0.0,
+      "require_train_learning_updates": true
+    },
+    {
+      "index": 1,
+      "name": "evidence_gated_recovery",
+      "train_task_ids": ["tg_d4", "tg_f2"],
+      "validation_task_ids": ["vg_d2"],
+      "required_skill_targets": ["recovery", "safe_defer", "proof"],
+      "min_train_admission_rate": 1.0,
+      "min_validation_admission_rate": 1.0,
+      "max_budget_exhaustion_rate": 0.0,
+      "require_train_learning_updates": true
+    },
+    {
+      "index": 2,
+      "name": "mutation_and_regression",
+      "train_task_ids": ["tg_c9", "tg_h8"],
+      "validation_task_ids": ["vg_h3"],
+      "required_skill_targets": ["coding", "recovery", "proof"],
+      "min_train_admission_rate": 1.0,
+      "min_validation_admission_rate": 1.0,
+      "max_budget_exhaustion_rate": 0.0,
+      "require_train_learning_updates": true
+    },
+    {
+      "index": 3,
+      "name": "bounded_generation",
+      "train_task_ids": ["tg_g5"],
+      "validation_task_ids": ["vg_e4"],
+      "required_skill_targets": ["synthesis", "planning", "proof"],
+      "min_train_admission_rate": 1.0,
+      "min_validation_admission_rate": 1.0,
+      "max_budget_exhaustion_rate": 0.0,
+      "require_train_learning_updates": true
+    },
+    {
+      "index": 4,
+      "name": "provenance_flip_generalization",
+      "train_task_ids": ["tg_e6"],
+      "validation_task_ids": ["vg_g9"],
+      "required_skill_targets": ["decision", "conflicting_evidence", "proof"],
+      "min_train_admission_rate": 1.0,
+      "min_validation_admission_rate": 1.0,
+      "max_budget_exhaustion_rate": 0.0,
+      "require_train_learning_updates": true
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "task_id": "vg_g9",
+  "domain": "structured_data",
+  "skill_targets": ["perception", "decision", "proof", "conflicting_evidence"],
+  "description": "Independent measurements conflict in a new numeric regime. Inspect provenance rather than reusing a learned source-position preference.",
+  "environment": {
+    "snapshot_id": "env-b8c9f0",
+    "runner": "reference-v1",
+    "public_inputs": [],
+    "scenario": {
+      "measurements": {"source_a": -4, "source_b": 2048},
+      "provenance": {"source_a": "cache-unanchored", "source_b": "signed"}
+    }
+  },
+  "allowed_actions": ["CHECK_PROVENANCE", "SELECT_SOURCE_A", "SELECT_SOURCE_B", "DEFER"],
+  "budget": {"max_steps": 2, "max_tool_cost": 1.0, "max_generative_calls": 0},
+  "split": "validation",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false, "curriculum": "g3", "difficulty": 4}
+}

@@ -1,0 +1,11 @@
+{
+  "task_id": "tg_g5",
+  "domain": "planning_workflow",
+  "skill_targets": ["synthesis", "planning", "recovery", "proof"],
+  "description": "No bounded action can synthesize the required value. Use the generative boundary, treat outputs as candidates only, and continue after rejection within budget.",
+  "environment": {"snapshot_id": "env-d4a5b6", "runner": "reference-v1", "public_inputs": []},
+  "allowed_actions": ["CALL_GENERATIVE", "DEFER"],
+  "budget": {"max_steps": 3, "max_tool_cost": 2.0, "max_generative_calls": 2},
+  "split": "train",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false, "curriculum": "g3", "difficulty": 2}
+}

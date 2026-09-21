@@ -1,0 +1,11 @@
+{
+  "task_id": "vg_h3",
+  "domain": "repository_coding",
+  "skill_targets": ["coding", "recovery", "proof", "budget_discipline"],
+  "description": "Resolve contradictory repository evidence with a minimal test-repair-regression sequence. Validation must remain read-only to the learning sink.",
+  "environment": {"snapshot_id": "env-c9d3a1", "runner": "reference-v1", "public_inputs": []},
+  "allowed_actions": ["RUN_TARGETED_TEST", "APPLY_CANDIDATE_FIX", "RUN_REGRESSION", "ROLLBACK", "DEFER"],
+  "budget": {"max_steps": 3, "max_tool_cost": 1.5, "max_generative_calls": 0},
+  "split": "validation",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false, "curriculum": "g3", "difficulty": 4}
+}

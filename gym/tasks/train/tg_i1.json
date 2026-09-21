@@ -1,0 +1,19 @@
+{
+  "task_id": "tg_i1",
+  "domain": "cli_process",
+  "skill_targets": ["perception", "exploration", "proof", "conflicting_evidence"],
+  "description": "A passing health observation is followed by a failure. Do not infer truth from list position or majority; inspect current process state.",
+  "environment": {
+    "snapshot_id": "env-f6a1d8",
+    "runner": "reference-v1",
+    "public_inputs": [],
+    "scenario": {
+      "initial_health": ["PASS", "FAIL"],
+      "process_state": "running"
+    }
+  },
+  "allowed_actions": ["INSPECT_PROCESS_STATE", "RETRY_HEALTHCHECK", "RESTART_PROCESS", "DEFER"],
+  "budget": {"max_steps": 2, "max_tool_cost": 1.0, "max_generative_calls": 0},
+  "split": "train",
+  "metadata": {"evaluation_class": "reference_contract", "native_competence_claim": false, "curriculum": "g3", "difficulty": 2}
+}

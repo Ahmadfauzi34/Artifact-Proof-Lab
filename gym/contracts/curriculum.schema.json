@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/proof-gated-agent-gym/curriculum.schema.json",
+  "title": "G3 Proof-Gated Training Curriculum",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "curriculum_id", "stages"],
+  "properties": {
+    "format": {"const": "proof-gym-curriculum-v1"},
+    "curriculum_id": {"type": "string", "minLength": 1},
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "name",
+          "train_task_ids",
+          "validation_task_ids",
+          "required_skill_targets",
+          "min_train_admission_rate",
+          "min_validation_admission_rate",
+          "max_budget_exhaustion_rate",
+          "require_train_learning_updates"
+        ],
+        "properties": {
+          "index": {"type": "integer", "minimum": 0},
+          "name": {"type": "string", "minLength": 1},
+          "train_task_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "validation_task_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "required_skill_targets": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "min_train_admission_rate": {"type": "number", "minimum": 0, "maximum": 1},
+          "min_validation_admission_rate": {"type": "number", "minimum": 0, "maximum": 1},
+          "max_budget_exhaustion_rate": {"type": "number", "minimum": 0, "maximum": 1},
+          "require_train_learning_updates": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}
