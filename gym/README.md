@@ -246,6 +246,7 @@ task/snapshot/runtime identities without exposing the raw pack to the policy.
 Reference command:
 
     PYTHONPATH=src:. python -m gym.run_private_pack_reference
+    PYTHONPATH=src:. python -m gym.run_isolated_private_pack_reference
 
 The output explicitly reports
 `evaluation_scope=reference_private_pack_conformance_only` and
@@ -257,6 +258,57 @@ container, VM, or remote-host attestation.
 
 See `gym/G22_CONTRACT.md` and
 `gym/contracts/private_holdout_pack.schema.json`.
+
+## G2.3 agent-process isolation
+
+G2.3 adds a second sanitized process boundary for the evaluated policy/generator.
+
+The trusted controller keeps the sealed HostTaskDescriptor, private holdout pack,
+HostGateway, evidence ledger, semantic/provenance validation, Artifact-Proof
+authority, and learning gate. The agent endpoint receives only AgentTaskView,
+visible observations, agent-visible trajectory, and generation attempt.
+
+Reference topology:
+
+    trusted controller
+      |-- HostGateway -----> private host process
+      |
+      +-- AgentEndpoint ---> evaluated agent process
+
+The reference agent transport is strict JSONL with protocol versioning,
+request_id binding, monotonic session turns, size limits, duplicate-key and
+non-finite-number rejection, timeout-without-retry, and stderr
+drain-and-discard.
+
+The trusted controller also creates an agent-boundary transcript. It records
+only AgentTaskView commitment, visible observation-frontier digests, typed
+decision/action, trajectory digest, generation attempt, candidate SHA-256, and
+explicit close. It never stores policy rationale/chain-of-thought or raw
+generated candidate text.
+
+On the isolated-agent path, ReferenceGym is deliberately called with no learning
+sink. Train learning may be forwarded only after the agent transcript is
+structurally valid and cross-bound to the G2 trajectory ledger.
+
+Reference command:
+
+    PYTHONPATH=src:. python -m gym.run_isolated_private_pack_reference
+
+This command launches both host and reference agent as separate subprocesses.
+It still reports:
+
+    evaluation_scope=reference_agent_process_isolation_conformance_only
+    native_competence_claim=false
+    filesystem_authority_isolated=false
+
+That limitation is intentional: two subprocesses with access to the same
+repository/filesystem do not prove private authority isolation. Native/private
+evaluation must place the evaluated AgentEndpoint in a sandbox, container, VM,
+remote service, or equivalent authority boundary that cannot read the sealed
+pack/evaluator/oracle except through the AgentEndpoint protocol.
+
+See `gym/G23_CONTRACT.md` and
+`gym/contracts/agent_wire_protocol.schema.json`.
 
 ## Run locally
 
@@ -274,5 +326,5 @@ Both remain reference contract conformance, not native competence evidence.
 
 Future gym upgrades should preserve gym/BASELINE_CONTRACT.md unless a later
 checkpoint explicitly replaces an invariant with a stricter contract. G2,
-G2.1, and G2.2 are strict supersets; the G1 baseline file is intentionally
-unchanged.
+G2.1, G2.2, and G2.3 are strict supersets; the G1 baseline file is
+intentionally unchanged.
