@@ -147,3 +147,28 @@ bundled holdout.
 This establishes reference G4 binary-runtime equivalence for that execution
 path. It remains reference-gym evidence, not native competence or independent
 authority evidence.
+
+
+## CI artifact coordinate
+
+The repository CI has a dedicated Python 3.13 Linux binary job that invokes
+`scripts/build_binary_runtime.py --source-commit "$GITHUB_SHA"`, validates the
+manifest identity, runs the bundled validator, and compares deterministic
+on-policy and typed-negative reference outputs between source and binary
+coordinates.
+
+The successful bundle is uploaded as:
+
+```text
+proof-gym-runtime-linux-x86_64-cpython313
+```
+
+The artifact remains ABI-bound because this baseline requires matching system
+`libpython`. Consumers must verify `BINARY_RUNTIME_MANIFEST.json`, including
+the exact source commit, binary/payload SHA-256 values, Python version and SOABI,
+before execution.
+
+The runtime also exposes `external-agent-train`. That role does not mutate an
+external agent. It executes proof-gated train episodes against a pre-existing
+AgentEndpoint and emits G4.3 portable training receipts for a separate agent-side
+learning boundary.
