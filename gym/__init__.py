@@ -55,6 +55,13 @@ from .attested_external import (
     AttestedExternalEpisodeResult,
     run_attested_external_episode,
 )
+from .adaptive_policy import (
+    CanonicalIntentAdapter,
+    LearningReceipt,
+    ProofGatedAdaptivePolicy,
+    QStat,
+    SemanticStateEncoder,
+)
 from .curriculum import (
     CURRICULUM_FORMAT,
     PROMOTION_RECEIPT_FORMAT,
@@ -78,6 +85,7 @@ __all__ = [
     "AuthorityAttestationRequest",
     "AuthorityClaims",
     "AuthorityVerification",
+    "CanonicalIntentAdapter",
     "CURRICULUM_FORMAT",
     "Curriculum",
     "CurriculumError",
@@ -103,6 +111,7 @@ __all__ = [
     "HostSessionStart",
     "HostTaskDescriptor",
     "IsolatedEpisodeResult",
+    "LearningReceipt",
     "LedgerEntry",
     "LocalReferenceAgentEndpoint",
     "LocalReferenceHost",
@@ -110,6 +119,8 @@ __all__ = [
     "PROMOTION_RECEIPT_FORMAT",
     "PolicyDecision",
     "PromotionReceipt",
+    "ProofGatedAdaptivePolicy",
+    "QStat",
     "PrivateHoldoutPack",
     "PrivatePackError",
     "PrivatePackTask",
@@ -118,6 +129,7 @@ __all__ = [
     "ReferenceHMACAuthorityAttestor",
     "ReferenceHMACAuthorityVerifier",
     "SubprocessAgentEndpoint",
+    "SemanticStateEncoder",
     "SubprocessHostGateway",
     "TerminalReason",
     "TrajectoryLedger",
