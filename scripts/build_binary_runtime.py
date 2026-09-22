@@ -12,12 +12,27 @@ import sysconfig
 import tempfile
 
 
+COMPATIBILITY_CONTRACT_RELATIVE = Path(
+    "lib/gym/contracts/binary_runtime_compatibility.json"
+)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_json(document: object) -> str:
+    payload = json.dumps(
+        document,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def copy_payload(project_root: Path, output: Path) -> None:
@@ -29,6 +44,81 @@ def copy_payload(project_root: Path, output: Path) -> None:
         lib / "artifact_proof",
         ignore=ignore,
     )
+
+
+def _load_compatibility_contract(output: Path) -> dict:
+    path = output / COMPATIBILITY_CONTRACT_RELATIVE
+    if not path.is_file():
+        raise SystemExit(f"binary compatibility contract missing: {path}")
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(
+            f"binary compatibility contract is unreadable: {exc}"
+        ) from exc
+    required = {
+        "schema",
+        "compatibility_version",
+        "training_role",
+        "agent_protocol",
+        "external_training_receipt_format",
+        "learning_write_authority",
+        "required_admission_dimensions",
+        "aggregation_policy",
+        "training_surface_files",
+    }
+    if set(document) != required:
+        raise SystemExit("binary compatibility contract fields are invalid")
+    files = document["training_surface_files"]
+    if (
+        not isinstance(files, list)
+        or not files
+        or any(not isinstance(item, str) or not item for item in files)
+        or len(files) != len(set(files))
+    ):
+        raise SystemExit("training_surface_files must be unique non-empty paths")
+    return document
+
+
+def build_compatibility_metadata(output: Path) -> dict:
+    contract = _load_compatibility_contract(output)
+    entries = []
+    for relative in sorted(contract["training_surface_files"]):
+        path = output / relative
+        if not path.is_file():
+            raise SystemExit(f"training surface file missing: {relative}")
+        entries.append(
+            {
+                "path": relative,
+                "sha256": sha256_file(path),
+            }
+        )
+    surface_document = {
+        "schema": "proof-gym-training-surface-v1",
+        "files": entries,
+    }
+    return {
+        "schema": str(contract["schema"]),
+        "contract_version": int(contract["compatibility_version"]),
+        "contract_path": COMPATIBILITY_CONTRACT_RELATIVE.as_posix(),
+        "contract_sha256": sha256_file(
+            output / COMPATIBILITY_CONTRACT_RELATIVE
+        ),
+        "training_role": str(contract["training_role"]),
+        "agent_protocol": str(contract["agent_protocol"]),
+        "external_training_receipt_format": str(
+            contract["external_training_receipt_format"]
+        ),
+        "learning_write_authority": bool(
+            contract["learning_write_authority"]
+        ),
+        "required_admission_dimensions": list(
+            contract["required_admission_dimensions"]
+        ),
+        "aggregation_policy": dict(contract["aggregation_policy"]),
+        "training_surface_file_count": len(entries),
+        "training_surface_sha256": sha256_json(surface_document),
+    }
 
 
 def _python_config() -> str:
@@ -123,6 +213,7 @@ def build_manifest(
             "requires_python_command_at_runtime": False,
             "requires_system_libpython": True,
         },
+        "compatibility": build_compatibility_metadata(output),
         "runtime_roles": sorted(
             [
                 "adaptive-train",
