@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from gym.binary_runtime_entry import _allowed_temp_script, _execute, _resolve
+from scripts.build_binary_runtime import build_compatibility_metadata, copy_payload
 
 
 class BinaryRuntimeEntryTests(unittest.TestCase):
@@ -60,6 +61,38 @@ class BinaryRuntimeEntryTests(unittest.TestCase):
             mode, target, rest = _resolve(["-B", str(script)])
             self.assertEqual(_execute(mode, target, rest), 0)
             self.assertEqual(marker.read_text(), "42")
+
+
+class BinaryRuntimeCompatibilityTests(unittest.TestCase):
+    def test_training_surface_metadata_is_stable_and_explicit(self):
+        project_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="gym-binary-compat-") as tmp:
+            output = Path(tmp)
+            copy_payload(project_root, output)
+            first = build_compatibility_metadata(output)
+            second = build_compatibility_metadata(output)
+            self.assertEqual(first, second)
+            self.assertEqual(
+                first["schema"],
+                "proof-gym-binary-runtime-compatibility-v1",
+            )
+            self.assertEqual(first["contract_version"], 1)
+            self.assertEqual(first["training_role"], "external-agent-train")
+            self.assertEqual(
+                first["agent_protocol"],
+                "proof-gym-agent-jsonl-v1",
+            )
+            self.assertEqual(
+                first["external_training_receipt_format"],
+                "proof-gym-external-training-receipt-v1",
+            )
+            self.assertFalse(first["learning_write_authority"])
+            self.assertGreater(first["training_surface_file_count"], 20)
+            self.assertEqual(len(first["training_surface_sha256"]), 64)
+            self.assertEqual(
+                first["aggregation_policy"]["mismatch_action"],
+                "ISOLATE_EVIDENCE",
+            )
 
 
 if __name__ == "__main__":
