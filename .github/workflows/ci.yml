@@ -59,6 +59,17 @@ jobs:
           assert doc["build"]["python_soabi"].startswith("cpython-313-")
           assert doc["build"]["requires_system_libpython"] is True
           assert "external-agent-train" in doc["runtime_roles"]
+          compat = doc["compatibility"]
+          assert compat["schema"] == "proof-gym-binary-runtime-compatibility-v1"
+          assert compat["contract_version"] == 1
+          assert compat["training_role"] == "external-agent-train"
+          assert compat["agent_protocol"] == "proof-gym-agent-jsonl-v1"
+          assert compat["external_training_receipt_format"] == "proof-gym-external-training-receipt-v1"
+          assert compat["learning_write_authority"] is False
+          assert compat["training_surface_file_count"] > 20
+          assert len(compat["training_surface_sha256"]) == 64
+          assert compat["aggregation_policy"]["mismatch_action"] == "ISOLATE_EVIDENCE"
+          assert compat["aggregation_policy"]["behavior_equivalence_required"] is True
           print(json.dumps(doc, indent=2, sort_keys=True))
           PY
       - name: Validate bundled runtime
