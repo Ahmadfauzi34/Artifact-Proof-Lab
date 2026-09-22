@@ -172,3 +172,50 @@ The runtime also exposes `external-agent-train`. That role does not mutate an
 external agent. It executes proof-gated train episodes against a pre-existing
 AgentEndpoint and emits G4.3 portable training receipts for a separate agent-side
 learning boundary.
+
+
+## Cross-version training compatibility
+
+A binary runtime identity and a training compatibility identity are deliberately
+different.
+
+```text
+source commit / bundle payload / executable SHA
+                 !=
+training semantic compatibility
+```
+
+New builds include `compatibility` metadata in
+`BINARY_RUNTIME_MANIFEST.json`. The canonical contract lives at
+`gym/contracts/binary_runtime_compatibility.json`.
+
+The compatibility fingerprint covers the proof engine, trajectory ledger,
+agent protocol, external-agent boundary, host boundary and G4.3 receipt
+generation path. Documentation-only or build-provenance changes outside this
+surface do not automatically make historical training evidence incompatible.
+
+Evidence from two runtime bundles may be aggregated only when all required
+conditions hold:
+
+```text
+exact Python SOABI
++ same compatibility-contract version
++ same agent protocol
++ same external-training receipt format
++ external-agent-train role present
++ same training_surface_sha256
++ explicit behavior-equivalence evidence
+```
+
+A source-commit mismatch or executable-SHA mismatch alone is not sufficient to
+reject evidence. Conversely, matching ABI alone is never sufficient to merge
+evidence.
+
+If a required compatibility dimension differs, the required action is
+`ISOLATE_EVIDENCE`. If contract/surface checks match but behavior equivalence
+has not been established, the runtime remains
+`REQUIRE_BEHAVIOR_PROOF`. Only a full match may reach
+`ALLOW_AGGREGATION`.
+
+This compatibility result is provenance/admission metadata only. It is not
+truth, proof of task success, native competence, or promotion authority.
