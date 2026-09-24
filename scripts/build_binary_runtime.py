@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -121,6 +122,30 @@ def build_compatibility_metadata(output: Path) -> dict:
     }
 
 
+def _runtime_roles_from_payload(output: Path) -> list[str]:
+    entry = output / "lib" / "gym" / "binary_runtime_entry.py"
+    if not entry.is_file():
+        raise SystemExit(f"binary runtime entry payload missing: {entry}")
+    try:
+        namespace = runpy.run_path(str(entry))
+    except Exception as exc:
+        raise SystemExit(f"binary runtime roles are unreadable: {exc}") from exc
+    roles = namespace.get("ROLE_MODULES")
+    if (
+        not isinstance(roles, dict)
+        or not roles
+        or any(
+            not isinstance(role, str)
+            or not role
+            or not isinstance(module, str)
+            or not module
+            for role, module in roles.items()
+        )
+    ):
+        raise SystemExit("binary runtime ROLE_MODULES is invalid")
+    return sorted(roles)
+
+
 def _python_config() -> str:
     versioned = shutil.which(
         f"python{sys.version_info.major}.{sys.version_info.minor}-config"
@@ -214,25 +239,7 @@ def build_manifest(
             "requires_system_libpython": True,
         },
         "compatibility": build_compatibility_metadata(output),
-        "runtime_roles": sorted(
-            [
-                "adaptive-train",
-                "negative-train",
-                "on-policy-train",
-                "curriculum",
-                "reference",
-                "subprocess-reference",
-                "private-pack",
-                "isolated-private-pack",
-                "external-agent-reference",
-                "external-agent-train",
-                "attested-external-reference",
-                "private-host",
-                "agent-worker",
-                "agent-socket-server",
-                "validate",
-            ]
-        ),
+        "runtime_roles": _runtime_roles_from_payload(output),
     }
 
 
