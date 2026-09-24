@@ -12,7 +12,7 @@ from .paths import canonical_relative_path
 
 FORMAT = "artifact-proof-manifest-v1"
 SUPPORTED_PROFILES = frozenset({"sealed", "live"})
-SUPPORTED_CHECKS = frozenset({"sqlite_integrity", "zip_member_matches", "environment"})
+SUPPORTED_CHECKS = frozenset({"sqlite_integrity", "zip_member_matches", "environment", "value_binding"})
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -140,6 +140,16 @@ def _parse_check(raw: Any, index: int, files: Mapping[str, FileSpec]) -> CheckSp
         if not isinstance(only_member, bool):
             raise ManifestError(f"{context}.only_member must be boolean")
         config = {"archive": archive, "member": member, "target": target, "only_member": only_member}
+    elif check_type == "value_binding":
+        _keys(value, common | {"operands"}, context)
+        operands_raw = value.get("operands")
+        if not isinstance(operands_raw, list) or len(operands_raw) < 2:
+            raise ManifestError(f"{context}.operands must contain at least two operands")
+        operands = tuple(
+            _parse_binding_operand(operand, files, f"{context}.operands[{operand_index}]")
+            for operand_index, operand in enumerate(operands_raw)
+        )
+        config = {"operands": operands}
     else:
         _keys(
             value,
@@ -165,6 +175,35 @@ def _parse_check(raw: Any, index: int, files: Mapping[str, FileSpec]) -> CheckSp
             "enforce": enforce,
         }
     return CheckSpec(check_id, check_type, profiles, MappingProxyType(config))
+
+
+def _parse_binding_operand(raw: Any, files: Mapping[str, FileSpec], context: str) -> Mapping[str, str]:
+    value = _object(raw, context)
+    kind = _nonempty(value.get("kind"), f"{context}.kind")
+    if kind == "json_pointer":
+        _keys(value, {"kind", "path", "pointer"}, context)
+        path = _declared_path(value.get("path"), files, f"{context}.path")
+        pointer = value.get("pointer")
+        if not isinstance(pointer, str) or (pointer and not pointer.startswith("/")):
+            raise ManifestError(f"{context}.pointer must be an empty string or start with '/'")
+        _validate_json_pointer(pointer, f"{context}.pointer")
+        return MappingProxyType({"kind": kind, "path": path, "pointer": pointer})
+    if kind == "file_sha256":
+        _keys(value, {"kind", "path"}, context)
+        path = _declared_path(value.get("path"), files, f"{context}.path")
+        return MappingProxyType({"kind": kind, "path": path})
+    raise ManifestError(f"unsupported value-binding operand kind in {context}: {kind}")
+
+
+def _validate_json_pointer(pointer: str, context: str) -> None:
+    index = 0
+    while index < len(pointer):
+        if pointer[index] != "~":
+            index += 1
+            continue
+        if index + 1 >= len(pointer) or pointer[index + 1] not in {"0", "1"}:
+            raise ManifestError(f"invalid JSON Pointer escape in {context}")
+        index += 2
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

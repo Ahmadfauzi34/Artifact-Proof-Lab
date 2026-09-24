@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from decimal import Decimal, DecimalException
 from io import BytesIO
 import hashlib
+import json
 import platform
 import sqlite3
 import stat
@@ -107,6 +109,8 @@ def run_declared_check(source: ArtifactSource, check: CheckSpec, profile: str) -
         return _zip_member_matches(source, check)
     if check.check_type == "environment":
         return _environment(check)
+    if check.check_type == "value_binding":
+        return _value_binding(source, check)
     raise AssertionError(f"unhandled check type: {check.check_type}")
 
 
@@ -213,3 +217,138 @@ def _environment(check: CheckSpec) -> Finding:
         status = Status.WARN
         message = "execution environment differs from non-binding reference"
     return Finding(check.check_id, check.check_type, status, message, expected=expected, observed=observed)
+
+
+def _value_binding(source: ArtifactSource, check: CheckSpec) -> Finding:
+    try:
+        bound: list[tuple[str, bytes]] = []
+        documents: dict[str, object] = {}
+        for operand in check.config["operands"]:
+            kind = operand["kind"]
+            path = operand["path"]
+            if kind == "file_sha256":
+                label = f"file_sha256:{path}"
+                value: object = source.sha256(path)
+            elif kind == "json_pointer":
+                pointer = operand["pointer"]
+                label = f"json_pointer:{path}#{pointer}"
+                if path not in documents:
+                    documents[path] = _read_strict_json(source, path)
+                value = _resolve_json_pointer(documents[path], pointer)
+            else:
+                raise SourceError(f"unsupported value-binding operand kind: {kind}")
+            canonical = _canonical_json_value(value)
+            bound.append((label, canonical))
+
+        reference = bound[0][1]
+        passed = all(value == reference for _, value in bound[1:])
+        observed = [
+            {
+                "operand": label,
+                "value_sha256": hashlib.sha256(value).hexdigest(),
+            }
+            for label, value in bound
+        ]
+        return Finding(
+            check.check_id,
+            check.check_type,
+            Status.PASS if passed else Status.FAIL,
+            "all bound values are semantically identical" if passed else "bound values differ",
+            expected={"operand": bound[0][0], "value_sha256": observed[0]["value_sha256"]},
+            observed=observed,
+        )
+    except (SourceError, UnicodeDecodeError, json.JSONDecodeError, DecimalException, RecursionError, ValueError) as exc:
+        return Finding(
+            check.check_id,
+            check.check_type,
+            Status.FAIL,
+            f"value binding inspection failed: {type(exc).__name__}: {exc}",
+        )
+
+
+def _read_strict_json(source: ArtifactSource, path: str) -> object:
+    data = source.read_bytes(path)
+    text = data.decode("utf-8")
+    return json.loads(
+        text,
+        object_pairs_hook=_unique_json_object,
+        parse_int=Decimal,
+        parse_float=Decimal,
+        parse_constant=_reject_json_constant,
+    )
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(text: str) -> object:
+    raise ValueError(f"non-standard JSON constant is forbidden: {text}")
+
+
+def _resolve_json_pointer(document: object, pointer: str) -> object:
+    if pointer == "":
+        return document
+    current = document
+    for raw_token in pointer.split("/")[1:]:
+        token = raw_token.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, dict):
+            if token not in current:
+                raise ValueError(f"JSON Pointer member is missing: {pointer}")
+            current = current[token]
+            continue
+        if isinstance(current, list):
+            if token == "-" or not token.isdigit() or (len(token) > 1 and token.startswith("0")):
+                raise ValueError(f"JSON Pointer array index is invalid: {pointer}")
+            index = int(token)
+            if index >= len(current):
+                raise ValueError(f"JSON Pointer array index is out of range: {pointer}")
+            current = current[index]
+            continue
+        raise ValueError(f"JSON Pointer descends through a scalar: {pointer}")
+    return current
+
+
+def _canonical_json_value(value: object) -> bytes:
+    normalized = _normalize_json_value(value)
+    return json.dumps(
+        normalized,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("ascii")
+
+
+def _normalize_json_value(value: object) -> object:
+    if value is None:
+        return ["null"]
+    if type(value) is bool:
+        return ["bool", value]
+    if isinstance(value, Decimal):
+        return ["number", *_canonical_decimal(value)]
+    if isinstance(value, str):
+        return ["string", value]
+    if isinstance(value, list):
+        return ["array", [_normalize_json_value(item) for item in value]]
+    if isinstance(value, dict):
+        return [
+            "object",
+            [[key, _normalize_json_value(value[key])] for key in sorted(value)],
+        ]
+    raise ValueError(f"unsupported JSON value type: {type(value).__name__}")
+
+
+def _canonical_decimal(value: Decimal) -> tuple[int, str, int]:
+    sign, raw_digits, exponent = value.as_tuple()
+    digits = list(raw_digits)
+    if not any(digits):
+        return 0, "0", 0
+    while digits and digits[-1] == 0:
+        digits.pop()
+        exponent += 1
+    return sign, "".join(str(digit) for digit in digits), exponent
