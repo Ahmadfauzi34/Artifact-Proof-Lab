@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 import tempfile
 import unittest
 
 from gym.binary_runtime_entry import _allowed_temp_script, _execute, _resolve
 from scripts.build_binary_runtime import build_compatibility_metadata, copy_payload
+from tests.support import manifest_for, write_directory
 
 
 class BinaryRuntimeEntryTests(unittest.TestCase):
@@ -14,6 +17,26 @@ class BinaryRuntimeEntryTests(unittest.TestCase):
             _resolve(["adaptive-train"]),
             ("module", "gym.run_adaptive_training_reference", []),
         )
+
+    def test_artifact_verify_role_resolves_without_general_module_access(self):
+        self.assertEqual(
+            _resolve(["artifact-verify", "verify", "/tmp/artifact", "--json"]),
+            ("module", "artifact_proof", ["verify", "/tmp/artifact", "--json"]),
+        )
+        with self.assertRaises(SystemExit):
+            _resolve(["-m", "json"])
+
+    def test_artifact_verify_role_executes_proof_cli(self):
+        with tempfile.TemporaryDirectory(prefix="gym-artifact-verify-") as tmp:
+            root = Path(tmp) / "artifact"
+            files = {"payload.txt": b"hello"}
+            write_directory(root, files, manifest_for(files))
+            mode, target, rest = _resolve(["artifact-verify", "verify", str(root), "--json"])
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                result = _execute(mode, target, rest)
+            self.assertEqual(result, 0)
+            self.assertIn('"status": "PASS"', stdout.getvalue())
 
     def test_allowed_temp_script_resolves(self):
         with tempfile.TemporaryDirectory(prefix="gym-runtime-test-") as tmp:
