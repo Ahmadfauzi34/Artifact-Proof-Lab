@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from io import BytesIO
 import hashlib
 import json
@@ -257,7 +257,7 @@ def _value_binding(source: ArtifactSource, check: CheckSpec) -> Finding:
             expected={"operand": bound[0][0], "value_sha256": observed[0]["value_sha256"]},
             observed=observed,
         )
-    except (SourceError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (SourceError, UnicodeDecodeError, json.JSONDecodeError, DecimalException, RecursionError, ValueError) as exc:
         return Finding(
             check.check_id,
             check.check_type,
@@ -319,9 +319,9 @@ def _canonical_json_value(value: object) -> bytes:
     return json.dumps(
         normalized,
         separators=(",", ":"),
-        ensure_ascii=False,
+        ensure_ascii=True,
         allow_nan=False,
-    ).encode("utf-8")
+    ).encode("ascii")
 
 
 def _normalize_json_value(value: object) -> object:
