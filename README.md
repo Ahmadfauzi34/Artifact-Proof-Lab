@@ -24,6 +24,8 @@ of silently promoting it to trust.
 - distinguish immutable files from mutable live state;
 - run SQLite `quick_check` or `integrity_check` read-only;
 - prove that a member of a nested cold-backup ZIP matches a target file;
+- bind values selected by JSON Pointer to each other and/or to a physical
+  file SHA-256 without hard-coding an application schema;
 - compare the host to a binding or non-binding reference environment;
 - freeze the completed finding set so a rejected proof cannot be rewritten as
   passing after validation;
@@ -54,7 +56,9 @@ CLI usage errors use argparse's normal non-zero status.
   "files": {
     "runtime/agent.py": {"sha256": "<64 lowercase hex>"},
     "state/brain.db": {"sha256": "<64 lowercase hex>", "mutable": true},
-    "state/brain-backup.zip": {"sha256": "<64 lowercase hex>", "mutable": true}
+    "state/brain-backup.zip": {"sha256": "<64 lowercase hex>", "mutable": true},
+    "AGENT_MANIFEST.json": {"sha256": "<64 lowercase hex>"},
+    "STATE_RECOVERY_CONTRACT.json": {"sha256": "<64 lowercase hex>"}
   },
   "coverage": {"complete": true, "allow_unlisted": []},
   "checks": [
@@ -74,6 +78,26 @@ CLI usage errors use argparse's normal non-zero status.
       "profiles": ["sealed"]
     },
     {
+      "id": "backup-metadata-binding",
+      "type": "value_binding",
+      "operands": [
+        {
+          "kind": "json_pointer",
+          "path": "AGENT_MANIFEST.json",
+          "pointer": "/state_contract/backup_zip_sha256_at_packaging"
+        },
+        {
+          "kind": "json_pointer",
+          "path": "STATE_RECOVERY_CONTRACT.json",
+          "pointer": "/backup_zip_sha256_at_packaging"
+        },
+        {
+          "kind": "file_sha256",
+          "path": "state/brain-backup.zip"
+        }
+      ]
+    },
+    {
       "id": "reference-machine",
       "type": "environment",
       "python_implementation": "cpython",
@@ -88,6 +112,12 @@ CLI usage errors use argparse's normal non-zero status.
 In `sealed` profile every declared file is hash-gated. In `live` profile,
 files explicitly marked `mutable` must still exist and pass applicable semantic
 checks, but their packaging hash is not treated as immutable.
+
+`value_binding` is deliberately schema-neutral. Each operand resolves to a JSON
+value: either a selected value from a declared JSON file or the SHA-256 string
+of a declared physical file. The check passes only when every canonical value
+is identical. Reports commit to the canonical values by SHA-256 rather than
+copying the raw values into proof output.
 
 ## Reference machine, not a platform restriction
 
