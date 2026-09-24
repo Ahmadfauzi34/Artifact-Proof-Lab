@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from io import BytesIO
 import hashlib
 import json
-import math
 import platform
 import sqlite3
 import stat
@@ -272,7 +272,8 @@ def _read_strict_json(source: ArtifactSource, path: str) -> object:
     return json.loads(
         text,
         object_pairs_hook=_unique_json_object,
-        parse_float=_finite_json_float,
+        parse_int=Decimal,
+        parse_float=Decimal,
         parse_constant=_reject_json_constant,
     )
 
@@ -284,13 +285,6 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
             raise ValueError(f"duplicate JSON key: {key}")
         result[key] = value
     return result
-
-
-def _finite_json_float(text: str) -> float:
-    value = float(text)
-    if not math.isfinite(value):
-        raise ValueError("non-finite JSON number is forbidden")
-    return value
 
 
 def _reject_json_constant(text: str) -> object:
@@ -321,10 +315,40 @@ def _resolve_json_pointer(document: object, pointer: str) -> object:
 
 
 def _canonical_json_value(value: object) -> bytes:
+    normalized = _normalize_json_value(value)
     return json.dumps(
-        value,
-        sort_keys=True,
+        normalized,
         separators=(",", ":"),
         ensure_ascii=False,
         allow_nan=False,
     ).encode("utf-8")
+
+
+def _normalize_json_value(value: object) -> object:
+    if value is None:
+        return ["null"]
+    if type(value) is bool:
+        return ["bool", value]
+    if isinstance(value, Decimal):
+        return ["number", *_canonical_decimal(value)]
+    if isinstance(value, str):
+        return ["string", value]
+    if isinstance(value, list):
+        return ["array", [_normalize_json_value(item) for item in value]]
+    if isinstance(value, dict):
+        return [
+            "object",
+            [[key, _normalize_json_value(value[key])] for key in sorted(value)],
+        ]
+    raise ValueError(f"unsupported JSON value type: {type(value).__name__}")
+
+
+def _canonical_decimal(value: Decimal) -> tuple[int, str, int]:
+    sign, raw_digits, exponent = value.as_tuple()
+    digits = list(raw_digits)
+    if not any(digits):
+        return 0, "0", 0
+    while digits and digits[-1] == 0:
+        digits.pop()
+        exponent += 1
+    return sign, "".join(str(digit) for digit in digits), exponent
