@@ -19,6 +19,19 @@ def _finding(report, check_id: str):
     return next(finding for finding in report.findings if finding.check_id == check_id)
 
 
+def _two_json_binding(left: bytes, right: bytes) -> tuple[dict[str, bytes], list[dict]]:
+    files = {"left.json": left, "right.json": right}
+    checks = [{
+        "id": "value-binding",
+        "type": "value_binding",
+        "operands": [
+            {"kind": "json_pointer", "path": "left.json", "pointer": "/value"},
+            {"kind": "json_pointer", "path": "right.json", "pointer": "/value"},
+        ],
+    }]
+    return files, checks
+
+
 class ValueBindingTests(unittest.TestCase):
     def test_json_fields_can_bind_to_physical_file_sha256(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -183,6 +196,60 @@ class ValueBindingTests(unittest.TestCase):
 
             self.assertFalse(report.passed)
             self.assertIn("references undeclared file", _finding(report, "artifact-contract").message)
+
+    def test_equivalent_json_number_spellings_bind_equal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "artifact"
+            files = {
+                "left.json": b'{"value":1}\n',
+                "right.json": b'{"value":1.0}\n',
+                "third.json": b'{"value":1e0}\n',
+            }
+            checks = [{
+                "id": "number-binding",
+                "type": "value_binding",
+                "operands": [
+                    {"kind": "json_pointer", "path": "left.json", "pointer": "/value"},
+                    {"kind": "json_pointer", "path": "right.json", "pointer": "/value"},
+                    {"kind": "json_pointer", "path": "third.json", "pointer": "/value"},
+                ],
+            }]
+            write_directory(root, files, manifest_for(files, checks=checks))
+
+            self.assertEqual(_finding(verify_artifact(root), "number-binding").status, Status.PASS)
+
+    def test_large_distinct_json_numbers_do_not_collapse_through_float(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "artifact"
+            files, checks = _two_json_binding(
+                b'{"value":9007199254740992.0}\n',
+                b'{"value":9007199254740993.0}\n',
+            )
+            write_directory(root, files, manifest_for(files, checks=checks))
+
+            self.assertEqual(_finding(verify_artifact(root), "value-binding").status, Status.FAIL)
+
+    def test_large_exponent_json_numbers_have_no_hidden_float_ceiling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "artifact"
+            files, checks = _two_json_binding(
+                b'{"value":1e999}\n',
+                b'{"value":10e998}\n',
+            )
+            write_directory(root, files, manifest_for(files, checks=checks))
+
+            self.assertEqual(_finding(verify_artifact(root), "value-binding").status, Status.PASS)
+
+    def test_boolean_and_number_are_not_semantically_collapsed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "artifact"
+            files, checks = _two_json_binding(
+                b'{"value":true}\n',
+                b'{"value":1}\n',
+            )
+            write_directory(root, files, manifest_for(files, checks=checks))
+
+            self.assertEqual(_finding(verify_artifact(root), "value-binding").status, Status.FAIL)
 
 
 if __name__ == "__main__":
