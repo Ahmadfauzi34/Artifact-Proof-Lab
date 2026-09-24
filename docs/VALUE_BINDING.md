@@ -33,6 +33,25 @@ The check does not know application field names. A manifest may therefore bind
 backup identity, checkpoint identity, artifact revision, receipt digests, or
 other state without changing the verifier implementation.
 
+## Canonical JSON values
+
+Binding uses typed semantic normalization rather than Python's loose equality
+or binary floating-point conversion.
+
+```text
+null    != false
+false   != 0
+true    != 1
+"1"     != 1
+1       == 1.0 == 1e0
+```
+
+All JSON numbers are parsed as arbitrary-precision decimal values and reduced
+to a canonical sign/digits/exponent identity. This avoids IEEE-754 collapse
+such as treating two distinct large decimal values as equal, while also
+avoiding an artificial host-float magnitude ceiling. Object member ordering is
+normalized; array ordering remains significant.
+
 ## Boundary
 
 ```text
@@ -64,15 +83,16 @@ A declared binding fails when:
 - fewer than two operands are declared;
 - an operand kind is unsupported;
 - an operand references an undeclared file;
-- JSON is malformed, non-UTF-8, contains duplicate keys, non-standard numeric
-  constants, or non-finite numeric overflow;
+- JSON is malformed, non-UTF-8, contains duplicate keys, or uses non-standard
+  numeric constants such as `NaN` or `Infinity`;
 - JSON Pointer syntax is invalid;
 - a selected object member or array index is absent/invalid;
 - any canonical selected value differs from the first operand.
 
-JSON files are read through the normal bounded `ArtifactSource`; no separate
-value-binding byte ceiling is introduced. Existing caller-configurable source
-limits remain authoritative.
+Valid JSON decimal magnitudes are not rejected merely because they exceed a
+host binary-float range. JSON files are read through the normal bounded
+`ArtifactSource`; no separate value-binding byte ceiling is introduced.
+Existing caller-configurable source limits remain authoritative.
 
 ## Report privacy
 
