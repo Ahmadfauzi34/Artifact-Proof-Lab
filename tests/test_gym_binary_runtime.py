@@ -6,8 +6,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from gym.binary_runtime_entry import _allowed_temp_script, _execute, _resolve
-from scripts.build_binary_runtime import build_compatibility_metadata, copy_payload
+from gym.binary_runtime_entry import ROLE_MODULES, _allowed_temp_script, _execute, _resolve
+from scripts.build_binary_runtime import build_compatibility_metadata, build_manifest, copy_payload
 from tests.support import manifest_for, write_directory
 
 
@@ -116,6 +116,16 @@ class BinaryRuntimeCompatibilityTests(unittest.TestCase):
                 first["aggregation_policy"]["mismatch_action"],
                 "ISOLATE_EVIDENCE",
             )
+
+    def test_binary_manifest_roles_are_derived_from_bundled_launcher(self):
+        project_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="gym-binary-manifest-") as tmp:
+            output = Path(tmp)
+            copy_payload(project_root, output)
+            (output / "proof-gym-runtime").write_bytes(b"test-binary")
+            manifest = build_manifest(output, "source", "head")
+            self.assertEqual(manifest["runtime_roles"], sorted(ROLE_MODULES))
+            self.assertIn("artifact-verify", manifest["runtime_roles"])
 
 
 if __name__ == "__main__":
