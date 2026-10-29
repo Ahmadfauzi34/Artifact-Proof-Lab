@@ -48,6 +48,7 @@ private-pack
 private-host
 agent-worker
 agent-socket-server
+artifact-verify
 validate
 ```
 
@@ -56,14 +57,34 @@ It also accepts the restricted compatibility form:
 ```text
 proof-gym-runtime -B -m gym.private_host_server ...
 proof-gym-runtime -B -m gym.agent_worker ...
+proof-gym-runtime artifact-verify verify /path/to/artifact --json
 ```
 
-Only explicitly allowlisted gym modules are accepted through `-m`.
+Only explicitly allowlisted modules are accepted through `-m`. The host-facing
+`artifact-verify` role maps only to the bundled `artifact_proof` verifier; it
+does not expose arbitrary module execution.
 
 This preserves existing subprocess code that uses `sys.executable -B -m ...`.
 One binary artifact may therefore execute as multiple OS processes while keeping
 host and agent logical/process boundaries intact.
 
+
+
+## Host-facing Artifact-Proof verification
+
+The bundle carries the Artifact-Proof implementation as part of its proof
+surface. The `artifact-verify` role makes that verifier reachable through the
+same executable coordinate:
+
+```text
+proof-gym-runtime artifact-verify verify /path/to/artifact --profile sealed --json
+```
+
+This role is read/verify oriented. It does not grant evaluated agents access to
+host files, learning state, private holdout material, or arbitrary Python module
+execution. File visibility remains whatever authority the invoking host process
+already has. The role changes deployment reachability, not proof or workflow
+authority.
 
 ## Restricted temporary-script compatibility
 

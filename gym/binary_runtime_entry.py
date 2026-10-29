@@ -7,6 +7,7 @@ import sys
 import tempfile
 
 ROLE_MODULES = {
+    "artifact-verify": "artifact_proof",
     "negative-train": "gym.run_negative_experience_training_reference",
     "on-policy-train": "gym.run_on_policy_training_reference",
     "adaptive-train": "gym.run_adaptive_training_reference",
@@ -43,7 +44,7 @@ def _usage() -> str:
     roles = "\n  ".join(sorted(ROLE_MODULES))
     return (
         "usage: proof-gym-runtime <role> [args...]\n"
-        "       proof-gym-runtime -B -m <allowed-gym-module> [args...]\n\n"
+        "       proof-gym-runtime -B -m <allowed-module> [args...]\n\n"
         f"roles:\n  {roles}"
     )
 
